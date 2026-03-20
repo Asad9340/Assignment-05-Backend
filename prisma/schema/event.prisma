@@ -1,0 +1,90 @@
+model Event {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  eventDateTime DateTime
+  venue         String?
+  eventLink     String?
+
+  visibility      EventVisibility
+  feeType         FeeType         @default(FREE)
+  registrationFee Float           @default(0)
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  participants EventParticipant[]
+  reviews      EventReview[]
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  isDeleted        Boolean           @default(false)
+  deletedAt        DateTime?
+  eventInvitations EventInvitation[]
+
+  @@index([visibility, feeType])
+}
+
+model EventParticipant {
+  id      String @id @default(uuid())
+  eventId String
+  userId  String
+
+  status ParticipationStatus @default(PENDING)
+
+  // Payment (simple, not separate system)
+  paymentStatus PaymentStatus @default(PENDING)
+  paidAmount    Float?
+
+  requestedAt DateTime  @default(now())
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+  bannedAt    DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  @@unique([eventId, userId])
+}
+
+model EventInvitation {
+  id          String @id @default(uuid())
+  eventId     String
+  userId      String // invited user
+  invitedById String
+
+  status String // PENDING / ACCEPTED / DECLINED
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  @@unique([eventId, userId])
+}
+
+model EventReview {
+  id      String @id @default(uuid())
+  eventId String
+  userId  String
+
+  rating Int
+  review String?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  @@unique([eventId, userId])
+}
