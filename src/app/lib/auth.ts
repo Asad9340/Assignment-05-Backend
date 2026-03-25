@@ -24,7 +24,7 @@ export const auth = betterAuth({
       mapProfileToUser: () => {
         return {
           role: Role.USER,
-          stats: UserStatus.ACTIVE,
+          status: UserStatus.ACTIVE,
           emailVerified: true,
           isDeleted: false,
           deletedAt: null,
