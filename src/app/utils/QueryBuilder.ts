@@ -46,7 +46,6 @@ export class QueryBuilder<
   search(): this {
     const { searchTerm } = this.queryParams;
     const { searchableFields } = this.config;
-    // doctorSearchableFields = ['user.name', 'user.email', 'specialties.specialty.title' , 'specialties.specialty.description']
     if (searchTerm && searchableFields && searchableFields.length > 0) {
       const searchConditions: Record<string, unknown>[] = searchableFields.map(
         field => {
@@ -108,8 +107,6 @@ export class QueryBuilder<
 
     return this;
   }
-  // /doctors?searchTerm=john&page=1&sortBy=name&specialty=cardiology&appointmentFee[lt]=100 => {}
-  // { specialty: 'cardiology', appointmentFee: { lt: '100' } }
   filter(): this {
     const { filterableFields } = this.config;
     const excludedField = [
@@ -145,10 +142,6 @@ export class QueryBuilder<
         filterableFields.length === 0 ||
         filterableFields.includes(key);
 
-      // doctorFilterableFields = ['specialties.specialty.title', 'appointmentFee']
-      // /doctors?appointmentFee[lt]=100&appointmentFee[gt]=50 => { appointmentFee: { lt: '100', gt: '50' } }
-
-      // /doctors?user.name=John => { user: { name: 'John' } }
       if (key.includes('.')) {
         const parts = key.split('.');
 
@@ -271,7 +264,6 @@ export class QueryBuilder<
     this.sortBy = sortBy;
     this.sortOrder = sortOrder;
 
-    // /doctors?sortBy=user.name&sortOrder=asc => orderBy: { user: { name: 'asc' } }
 
     if (sortBy.includes('.')) {
       const parts = sortBy.split('.');
@@ -309,8 +301,6 @@ export class QueryBuilder<
 
   fields(): this {
     const fieldsParam = this.queryParams.fields;
-    // /doctors?fields=id,name,user => select: { id: true, name: true, user: { select: { name: true } } }
-
     //no nested field selection for now, only direct fields
     if (fieldsParam && typeof fieldsParam === 'string') {
       const fieldsArray = fieldsParam?.split(',').map(field => field.trim());

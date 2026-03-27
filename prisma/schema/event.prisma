@@ -13,16 +13,20 @@ model Event {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
 
-  participants EventParticipant[]
-  reviews      EventReview[]
-
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  isDeleted        Boolean           @default(false)
-  deletedAt        DateTime?
+  participants     EventParticipant[]
+  reviews          EventReview[]
   eventInvitations EventInvitation[]
 
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
   @@index([visibility, feeType])
+  @@index([isDeleted])
+  @@index([eventDateTime])
+  @@index([ownerId])
+  @@index([isDeleted, visibility, eventDateTime])
 }
 
 model EventParticipant {
@@ -32,7 +36,6 @@ model EventParticipant {
 
   status ParticipationStatus @default(PENDING)
 
-  // Payment (simple, not separate system)
   paymentStatus PaymentStatus @default(PENDING)
   paidAmount    Float?
 
@@ -55,12 +58,14 @@ model EventParticipant {
 model EventInvitation {
   id          String @id @default(uuid())
   eventId     String
-  userId      String // invited user
+  userId      String
   invitedById String
 
-  status String // PENDING / ACCEPTED / DECLINED
+  status InvitationStatus
 
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event     Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User  @relation("EventInvitationUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy User  @relation("EventInvitationInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
