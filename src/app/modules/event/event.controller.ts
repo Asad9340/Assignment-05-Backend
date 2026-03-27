@@ -1,0 +1,95 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Request, Response } from 'express';
+import status from 'http-status';
+import { EventService } from './event.service';
+import catchAsync from '../../shared/catchAsync';
+import { IRequestUser } from '../../interfaces/requestUser.interface';
+import { sendResponse } from '../../shared/sendResponse';
+
+const createEvent = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.createEvent(
+    req.user as IRequestUser,
+    req.body,
+  );
+
+  sendResponse(res, {
+    httpStatusCode: status.CREATED,
+    success: true,
+    message: 'Event created successfully',
+    data: result,
+  });
+});
+
+const getAllEvents = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.getAllEvents(req.query as any);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Events retrieved successfully',
+    data: result.data,
+    meta: result.meta,
+  });
+});
+
+const getUpcomingPublicEvents = catchAsync(
+  async (_req: Request, res: Response) => {
+    const result = await EventService.getUpcomingPublicEvents();
+
+    sendResponse(res, {
+      httpStatusCode: status.OK,
+      success: true,
+      message: 'Upcoming public events retrieved successfully',
+      data: result,
+    });
+  },
+);
+
+const getSingleEvent = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.getSingleEvent(req.params.eventId as string);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Event retrieved successfully',
+    data: result,
+  });
+});
+
+const updateEvent = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.updateEvent(
+    req.user as IRequestUser,
+    req.params.eventId as string,
+    req.body,
+  );
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Event updated successfully',
+    data: result,
+  });
+});
+
+const deleteEvent = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.deleteEvent(
+    req.user as IRequestUser,
+    req.params.eventId as string,
+  );
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Event deleted successfully',
+    data: result,
+  });
+});
+ 
+export const EventController = {
+  createEvent,
+  getAllEvents,
+  getUpcomingPublicEvents,
+  getSingleEvent,
+  updateEvent,
+  deleteEvent,
+};
