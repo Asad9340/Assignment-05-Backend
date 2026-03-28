@@ -32,6 +32,11 @@ interface EnvConfig {
     CLOUDINARY_API_KEY: string;
     CLOUDINARY_API_SECRET: string;
   };
+  SSLCOMMERZ: {
+    SSL_STORE_ID: string;
+    SSL_STORE_PASSWORD: string;
+    SSL_IS_LIVE: string;
+  };
 }
 
 const loadEnvVariables = (): EnvConfig => {
@@ -59,6 +64,9 @@ const loadEnvVariables = (): EnvConfig => {
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
+    'SSL_STORE_ID',
+    'SSL_STORE_PASSWORD',
+    'SSL_IS_LIVE',
   ];
 
   requireEnvVariable.forEach(variable => {
@@ -99,6 +107,11 @@ const loadEnvVariables = (): EnvConfig => {
       CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME as string,
       CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY as string,
       CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET as string,
+    },
+    SSLCOMMERZ: {
+      SSL_STORE_ID: process.env.SSL_STORE_ID as string,
+      SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD as string,
+      SSL_IS_LIVE: process.env.SSL_IS_LIVE as string,
     },
   };
 };
