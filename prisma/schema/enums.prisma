@@ -38,3 +38,14 @@ enum InvitationStatus {
   ACCEPTED
   REJECTED
 }
+
+enum PaymentGateway {
+  SSLCOMMERZ
+}
+
+enum TransactionStatus {
+  INITIATED
+  VALID
+  FAILED
+  CANCELLED
+}

@@ -17,10 +17,11 @@ model Event {
   reviews          EventReview[]
   eventInvitations EventInvitation[]
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  isDeleted Boolean   @default(false)
-  deletedAt DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  isDeleted           Boolean              @default(false)
+  deletedAt           DateTime?
+  paymentTransactions PaymentTransaction[]
 
   @@index([visibility, feeType])
   @@index([isDeleted])
@@ -47,10 +48,11 @@ model EventParticipant {
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  isDeleted Boolean   @default(false)
-  deletedAt DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  isDeleted           Boolean              @default(false)
+  deletedAt           DateTime?
+  paymentTransactions PaymentTransaction[]
 
   @@unique([eventId, userId])
 }

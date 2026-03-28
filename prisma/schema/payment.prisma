@@ -1,0 +1,37 @@
+model PaymentTransaction {
+  id      String         @id @default(uuid())
+  trxId   String         @unique
+  gateway PaymentGateway @default(SSLCOMMERZ)
+
+  userId             String
+  eventId            String
+  eventParticipantId String?
+
+  amount   Float
+  currency String @default("BDT")
+
+  status TransactionStatus @default(INITIATED)
+
+  gatewayTransactionId String?
+  bankTransactionId    String?
+  valId                String?
+  cardType             String?
+  storeAmount          Float?
+  verifyPayload        Json?
+
+  successUrl      String?
+  failUrl         String?
+  cancelUrl       String?
+  gatewayResponse Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event            Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventParticipant EventParticipant? @relation(fields: [eventParticipantId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([eventParticipantId])
+}

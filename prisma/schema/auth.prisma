@@ -1,22 +1,23 @@
 model User {
-  id                String             @id @default(uuid())
-  name              String
-  email             String
-  emailVerified     Boolean            @default(false)
-  role              Role               @default(USER)
-  status            UserStatus         @default(ACTIVE)
-  isDeleted         Boolean            @default(false)
-  deletedAt         DateTime?
-  image             String?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  sessions          Session[]
-  accounts          Account[]
-  events            Event[]
-  eventParticipants EventParticipant[]
-  eventReviews      EventReview[]
-  eventInvitations  EventInvitation[]  @relation("EventInvitationUser")
-  sentInvitations   EventInvitation[]  @relation("EventInvitationInvitedBy")
+  id                  String               @id @default(uuid())
+  name                String
+  email               String
+  emailVerified       Boolean              @default(false)
+  role                Role                 @default(USER)
+  status              UserStatus           @default(ACTIVE)
+  isDeleted           Boolean              @default(false)
+  deletedAt           DateTime?
+  image               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  sessions            Session[]
+  accounts            Account[]
+  events              Event[]
+  eventParticipants   EventParticipant[]
+  eventReviews        EventReview[]
+  eventInvitations    EventInvitation[]    @relation("EventInvitationUser")
+  sentInvitations     EventInvitation[]    @relation("EventInvitationInvitedBy")
+  paymentTransactions PaymentTransaction[]
 
   @@unique([email])
   @@map("user")
