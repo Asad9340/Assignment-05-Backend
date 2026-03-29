@@ -80,8 +80,12 @@ export const checkAuth =
 
           req.user = {
             userId: user.id,
+            name: user.name,
             role: user.role,
             email: user.email,
+            status: user.status,
+            isDeleted: user.isDeleted,
+            emailVerified: user.emailVerified,
           };
         }
 
