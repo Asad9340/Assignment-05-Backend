@@ -13,6 +13,7 @@ import {
   ILoginUserPayload,
   IRegisterUserPayload,
 } from './auth.interface';
+import { IRequestUser } from '../../interfaces/requestUser.interface';
 
 const registerUser = async (payload: IRegisterUserPayload) => {
   try {
@@ -92,6 +93,55 @@ const loginUser = async (payload: ILoginUserPayload) => {
   };
 };
 
+const getMe = async (user: IRequestUser) => {
+  const existingUser = await prisma.user.findUnique({
+    where: {
+      id: user.userId,
+    },
+    include: {
+      events: {
+        where: {
+          isDeleted: false,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      },
+      eventParticipants: {
+        where: {
+          isDeleted: false,
+        },
+        include: {
+          event: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      },
+      eventReviews: {
+        where: {
+          isDeleted: false,
+        },
+        include: {
+          event: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      },
+    },
+  });
+
+  if (
+    !existingUser ||
+    existingUser.isDeleted ||
+    existingUser.status === UserStatus.DELETED
+  ) {
+    throw new AppError(status.NOT_FOUND, 'User not found');
+  }
+
+  return existingUser;
+};
 
 const getNewToken = async (refreshToken: string, sessionToken: string) => {
   const isSessionTokenExists = await prisma.session.findUnique({
@@ -303,6 +353,7 @@ const googleLoginSuccess = async (session: Record<string, any>) => {
 export const authService = {
   registerUser,
   loginUser,
+  getMe,
   getNewToken,
   changePassword,
   logoutUser,

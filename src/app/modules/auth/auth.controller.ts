@@ -52,11 +52,21 @@ const loginUser = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-
+const getMe = catchAsync(async (req: Request, res: Response) => {
+  const result = await authService.getMe(req.user);
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'User profile fetch successfully',
+    data: result,
+  });
+});
 
 const getNewToken = catchAsync(async (req: Request, res: Response) => {
   const refreshToken = req.cookies.refreshToken;
-  const betterAuthSessionToken = req.cookies['better-auth.session-token'];
+  const betterAuthSessionToken =
+    req.cookies['better-auth.session_token'] ||
+    req.cookies['better-auth.session-token'];
   if (!refreshToken) {
     throw new AppError(status.UNAUTHORIZED, 'Refresh token is missing');
   }
@@ -85,7 +95,9 @@ const getNewToken = catchAsync(async (req: Request, res: Response) => {
 
 const changePassword = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body;
-  const betterAuthSessionToken = req.cookies['better-auth.session-token'];
+  const betterAuthSessionToken =
+    req.cookies['better-auth.session_token'] ||
+    req.cookies['better-auth.session-token'];
   const result = await authService.changePassword(
     payload,
     betterAuthSessionToken,
@@ -104,7 +116,9 @@ const changePassword = catchAsync(async (req: Request, res: Response) => {
 });
 
 const logoutUser = catchAsync(async (req: Request, res: Response) => {
-  const betterAuthSessionToken = req.cookies['better-auth.session-token'];
+  const betterAuthSessionToken =
+    req.cookies['better-auth.session_token'] ||
+    req.cookies['better-auth.session-token'];
   const result = await authService.logoutUser(betterAuthSessionToken);
   CookieUtils.clearCookie(res, 'accessToken', {
     httpOnly: true,
@@ -116,7 +130,7 @@ const logoutUser = catchAsync(async (req: Request, res: Response) => {
     secure: true,
     sameSite: 'none',
   });
-  CookieUtils.clearCookie(res, 'better-auth.session-token', {
+  CookieUtils.clearCookie(res, 'better-auth.session_token', {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
@@ -217,6 +231,7 @@ const handleOAuthError = catchAsync((req: Request, res: Response) => {
 export const authController = {
   registerUser,
   loginUser,
+  getMe,
   getNewToken,
   changePassword,
   logoutUser,
