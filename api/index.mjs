@@ -2500,6 +2500,40 @@ var getEventParticipants = async (user, eventId, query = {}) => {
   }).paginate().sort().fields().execute();
   return result;
 };
+var getMyPendingApprovals = async (user) => {
+  const approvals = await prisma.eventParticipant.findMany({
+    where: {
+      isDeleted: false,
+      status: ParticipationStatus.PENDING,
+      event: {
+        ownerId: user.userId,
+        isDeleted: false
+      }
+    },
+    include: {
+      event: {
+        select: {
+          id: true,
+          title: true,
+          feeType: true,
+          status: true
+        }
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+  return approvals;
+};
 var approveParticipant = async (user, participantId) => {
   const participant = await prisma.eventParticipant.findFirst({
     where: {
@@ -2623,6 +2657,7 @@ var ParticipationService = {
   joinEvent,
   getMyParticipations,
   getEventParticipants,
+  getMyPendingApprovals,
   approveParticipant,
   rejectParticipant,
   banParticipant
@@ -2664,6 +2699,19 @@ var getEventParticipants2 = catchAsync_default(async (req, res) => {
     data: result
   });
 });
+var getMyPendingApprovals2 = catchAsync_default(
+  async (req, res) => {
+    const result = await ParticipationService.getMyPendingApprovals(
+      req.user
+    );
+    sendResponse(res, {
+      httpStatusCode: status11.OK,
+      success: true,
+      message: "My pending approvals retrieved successfully",
+      data: result
+    });
+  }
+);
 var approveParticipant2 = catchAsync_default(async (req, res) => {
   const result = await ParticipationService.approveParticipant(
     req.user,
@@ -2716,6 +2764,7 @@ var ParticipationController = {
   joinEvent: joinEvent2,
   getMyParticipations: getMyParticipations2,
   getEventParticipants: getEventParticipants2,
+  getMyPendingApprovals: getMyPendingApprovals2,
   acceptParticipant,
   approveParticipant: approveParticipant2,
   rejectParticipant: rejectParticipant2,
@@ -2733,6 +2782,11 @@ router4.get(
   "/me",
   checkAuth(Role.ADMIN, Role.USER),
   ParticipationController.getMyParticipations
+);
+router4.get(
+  "/approvals/me",
+  checkAuth(Role.ADMIN, Role.USER),
+  ParticipationController.getMyPendingApprovals
 );
 router4.get(
   "/events/:eventId",

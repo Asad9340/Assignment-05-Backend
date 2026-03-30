@@ -210,6 +210,42 @@ const getEventParticipants = async (
   return result;
 };
 
+const getMyPendingApprovals = async (user: IRequestUser) => {
+  const approvals = await prisma.eventParticipant.findMany({
+    where: {
+      isDeleted: false,
+      status: ParticipationStatus.PENDING,
+      event: {
+        ownerId: user.userId,
+        isDeleted: false,
+      },
+    },
+    include: {
+      event: {
+        select: {
+          id: true,
+          title: true,
+          feeType: true,
+          status: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return approvals;
+};
+
 const approveParticipant = async (
   user: IRequestUser,
   participantId: string,
@@ -357,6 +393,7 @@ export const ParticipationService = {
   joinEvent,
   getMyParticipations,
   getEventParticipants,
+  getMyPendingApprovals,
   approveParticipant,
   rejectParticipant,
   banParticipant,

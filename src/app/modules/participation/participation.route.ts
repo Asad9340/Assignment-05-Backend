@@ -17,6 +17,11 @@ router.get(
   ParticipationController.getMyParticipations,
 );
 router.get(
+  '/approvals/me',
+  checkAuth(Role.ADMIN, Role.USER),
+  ParticipationController.getMyPendingApprovals,
+);
+router.get(
   '/events/:eventId',
   checkAuth(Role.ADMIN, Role.USER),
   ParticipationController.getEventParticipants,

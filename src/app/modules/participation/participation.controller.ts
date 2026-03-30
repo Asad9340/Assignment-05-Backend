@@ -46,6 +46,21 @@ const getEventParticipants = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getMyPendingApprovals = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await ParticipationService.getMyPendingApprovals(
+      req.user as IRequestUser,
+    );
+
+    sendResponse(res, {
+      httpStatusCode: status.OK,
+      success: true,
+      message: 'My pending approvals retrieved successfully',
+      data: result,
+    });
+  },
+);
+
 const approveParticipant = catchAsync(async (req: Request, res: Response) => {
   const result = await ParticipationService.approveParticipant(
     req.user as IRequestUser,
@@ -106,6 +121,7 @@ export const ParticipationController = {
   joinEvent,
   getMyParticipations,
   getEventParticipants,
+  getMyPendingApprovals,
   acceptParticipant,
   approveParticipant,
   rejectParticipant,
