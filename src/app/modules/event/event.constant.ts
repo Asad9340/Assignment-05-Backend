@@ -5,6 +5,7 @@ export const eventSearchableFields = ['title', 'description'];
 export const eventFilterableFields = [
   'visibility',
   'feeType',
+  'status',
   'ownerId',
   'venue',
 ];

@@ -20,6 +20,7 @@ router.post(
   authController.logoutUser,
 );
 router.post('/verify-email', authController.verifyEmail);
+router.post('/resend-verification-otp', authController.resendVerificationOTP);
 router.post('/forget-password', authController.forgetPassword);
 router.post('/reset-password', authController.resetPassword);
 

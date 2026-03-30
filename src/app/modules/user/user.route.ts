@@ -7,6 +7,11 @@ import { checkAuth } from '../../middleware/checkAuth';
 
 const router = Router();
 
+router.get(
+  '/search',
+  checkAuth(Role.ADMIN, Role.USER),
+  UserController.searchUsers,
+);
 router.get('/me', checkAuth(Role.ADMIN, Role.USER), UserController.getMe);
 router.patch(
   '/me',

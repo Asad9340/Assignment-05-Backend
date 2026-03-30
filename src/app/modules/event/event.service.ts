@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import status from 'http-status';
 import {
+  EventStatus,
   EventVisibility,
   FeeType,
   Role,
@@ -51,6 +52,7 @@ const createEvent = async (
       venue: payload.venue,
       eventLink: payload.eventLink,
       visibility: payload.visibility,
+      status: payload.status ?? EventStatus.ACTIVE,
       registrationFee,
       feeType,
       ownerId: user.userId,
@@ -109,6 +111,37 @@ const getAllEvents = async (query: IQueryParams) => {
     .execute();
 
   return result;
+};
+
+const getMyEvents = async (user: IRequestUser) => {
+  const events = await prisma.event.findMany({
+    where: {
+      ownerId: user.userId,
+      isDeleted: false,
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      },
+      _count: {
+        select: {
+          participants: true,
+          reviews: true,
+          eventInvitations: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return events;
 };
 
 const getUpcomingPublicEvents = async () => {
@@ -218,6 +251,7 @@ const updateEvent = async (
     venue: payload.venue,
     eventLink: payload.eventLink,
     visibility: payload.visibility,
+    status: payload.status,
   };
 
   if (payload.registrationFee !== undefined) {
@@ -290,6 +324,7 @@ const deleteEvent = async (user: IRequestUser, eventId: string) => {
 export const EventService = {
   createEvent,
   getAllEvents,
+  getMyEvents,
   getUpcomingPublicEvents,
   getSingleEvent,
   updateEvent,

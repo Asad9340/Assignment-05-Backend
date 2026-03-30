@@ -1,4 +1,3 @@
-
 import { ParticipationStatus } from '../../../generated/prisma/enums';
 import { IRequestUser } from '../../interfaces/requestUser.interface';
 import { prisma } from '../../lib/prisma';
@@ -152,6 +151,86 @@ const getPendingApprovals = async (user: IRequestUser) => {
   });
 };
 
+const getMyEventStatusSummary = async (user: IRequestUser) => {
+  const baseWhere = {
+    isDeleted: false,
+    event: {
+      ownerId: user.userId,
+      isDeleted: false,
+    },
+  };
+
+  const [pending, approved, rejected, joined, banned, recentPending] =
+    await Promise.all([
+      prisma.eventParticipant.count({
+        where: {
+          ...baseWhere,
+          status: ParticipationStatus.PENDING,
+        },
+      }),
+      prisma.eventParticipant.count({
+        where: {
+          ...baseWhere,
+          status: ParticipationStatus.APPROVED,
+        },
+      }),
+      prisma.eventParticipant.count({
+        where: {
+          ...baseWhere,
+          status: ParticipationStatus.REJECTED,
+        },
+      }),
+      prisma.eventParticipant.count({
+        where: {
+          ...baseWhere,
+          status: ParticipationStatus.JOINED,
+        },
+      }),
+      prisma.eventParticipant.count({
+        where: {
+          ...baseWhere,
+          status: ParticipationStatus.BANNED,
+        },
+      }),
+      prisma.eventParticipant.findMany({
+        where: {
+          ...baseWhere,
+          status: ParticipationStatus.PENDING,
+        },
+        include: {
+          event: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 8,
+      }),
+    ]);
+
+  return {
+    total: pending + approved + rejected + joined + banned,
+    pending,
+    approved,
+    rejected,
+    joined,
+    banned,
+    recentPending,
+  };
+};
+
 export const DashboardService = {
   getSummary,
   getMyEvents,
@@ -159,4 +238,5 @@ export const DashboardService = {
   getMyReviews,
   getMyRequests,
   getPendingApprovals,
+  getMyEventStatusSummary,
 };

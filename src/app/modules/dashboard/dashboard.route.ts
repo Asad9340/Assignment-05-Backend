@@ -35,5 +35,10 @@ router.get(
   checkAuth(Role.ADMIN, Role.USER),
   DashboardController.getPendingApprovals,
 );
+router.get(
+  '/my-event-status-summary',
+  checkAuth(Role.ADMIN, Role.USER),
+  DashboardController.getMyEventStatusSummary,
+);
 
 export const DashboardRoutes = router;

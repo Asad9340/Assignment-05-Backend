@@ -146,13 +146,38 @@ const logoutUser = catchAsync(async (req: Request, res: Response) => {
 
 const verifyEmail = catchAsync(async (req: Request, res: Response) => {
   const { email, otp } = req.body;
-  await authService.verifyEmail(email, otp);
+  const result = await authService.verifyEmail(email, otp);
+  const sessionToken =
+    req.cookies['better-auth.session_token'] ||
+    req.cookies['better-auth.session-token'];
+
+  tokenUtils.setAccessTokenCookie(res, result.accessToken);
+  tokenUtils.setRefreshTokenCookie(res, result.refreshToken);
+  if (sessionToken) {
+    tokenUtils.setBetterAuthSessionCookie(res, sessionToken);
+  }
+
   sendResponse(res, {
     httpStatusCode: status.OK,
     success: true,
     message: 'Email verified successfully',
+    data: result,
   });
 });
+
+const resendVerificationOTP = catchAsync(
+  async (req: Request, res: Response) => {
+    const { email } = req.body;
+    const result = await authService.resendVerificationOTP(email);
+
+    sendResponse(res, {
+      httpStatusCode: status.OK,
+      success: true,
+      message: 'Verification OTP sent successfully',
+      data: result,
+    });
+  },
+);
 
 const forgetPassword = catchAsync(async (req: Request, res: Response) => {
   const { email } = req.body;
@@ -236,6 +261,7 @@ export const authController = {
   changePassword,
   logoutUser,
   verifyEmail,
+  resendVerificationOTP,
   forgetPassword,
   resetPassword,
   googleLogin,

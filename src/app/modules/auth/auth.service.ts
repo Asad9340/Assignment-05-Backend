@@ -257,12 +257,65 @@ const verifyEmail = async (email: string, otp: string) => {
       otp,
     },
   });
-  if (result.status && !result.user.emailVerified) {
-    await prisma.user.update({
-      where: { email },
-      data: { emailVerified: true },
-    });
+
+  if (!result?.status) {
+    throw new AppError(status.BAD_REQUEST, 'Invalid or expired OTP');
   }
+
+  const updatedUser = await prisma.user.update({
+    where: { email },
+    data: { emailVerified: true },
+  });
+
+  const jwtPayload = {
+    userId: updatedUser.id,
+    name: updatedUser.name,
+    role: updatedUser.role,
+    email: updatedUser.email,
+    status: updatedUser.status,
+    isDeleted: updatedUser.isDeleted,
+    emailVerified: updatedUser.emailVerified,
+  };
+
+  const accessToken = tokenUtils.getAccessToken(jwtPayload);
+  const refreshToken = tokenUtils.getRefreshToken(jwtPayload);
+
+  return {
+    user: updatedUser,
+    accessToken,
+    refreshToken,
+  };
+};
+
+const resendVerificationOTP = async (email: string) => {
+  const normalizedEmail = email.toLowerCase();
+
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+
+  if (!user) {
+    throw new AppError(status.NOT_FOUND, 'User not found');
+  }
+
+  if (user.emailVerified) {
+    throw new AppError(status.BAD_REQUEST, 'Email is already verified');
+  }
+
+  if (user.isDeleted || user.status === UserStatus.DELETED) {
+    throw new AppError(status.NOT_FOUND, 'User not found');
+  }
+
+  await auth.api.sendVerificationOTP({
+    body: {
+      email: normalizedEmail,
+      type: 'email-verification',
+    },
+  });
+
+  return {
+    email: normalizedEmail,
+  };
 };
 
 const forgetPassword = async (email: string) => {
@@ -358,6 +411,7 @@ export const authService = {
   changePassword,
   logoutUser,
   verifyEmail,
+  resendVerificationOTP,
   forgetPassword,
   resetPassword,
   googleLoginSuccess,

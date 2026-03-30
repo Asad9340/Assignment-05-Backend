@@ -11,6 +11,11 @@ import {
 const router = Router();
 
 router.get('/', EventController.getAllEvents);
+router.get(
+  '/my-events',
+  checkAuth(Role.ADMIN, Role.USER),
+  EventController.getMyEvents,
+);
 router.get('/upcoming', EventController.getUpcomingPublicEvents);
 router.get('/:eventId', EventController.getSingleEvent);
 

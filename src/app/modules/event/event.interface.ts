@@ -1,4 +1,4 @@
-import { EventVisibility } from '../../../generated/prisma/enums';
+import { EventStatus, EventVisibility } from '../../../generated/prisma/enums';
 
 export type ICreateEventPayload = {
   title: string;
@@ -8,6 +8,7 @@ export type ICreateEventPayload = {
   venue?: string;
   eventLink?: string;
   visibility: EventVisibility;
+  status?: EventStatus;
   registrationFee?: number;
   ownerId: string;
 };

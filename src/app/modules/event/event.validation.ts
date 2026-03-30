@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EventVisibility } from '../../../generated/prisma/enums';
+import { EventStatus, EventVisibility } from '../../../generated/prisma/enums';
 
 export const createEventValidationSchema = z.object({
   body: z
@@ -11,6 +11,7 @@ export const createEventValidationSchema = z.object({
       venue: z.string().optional(),
       eventLink: z.string().url().optional(),
       visibility: z.nativeEnum(EventVisibility),
+      status: z.nativeEnum(EventStatus).optional(),
       registrationFee: z.coerce.number().min(0).optional(),
     })
     .refine(data => data.venue || data.eventLink, {
@@ -28,6 +29,7 @@ export const updateEventValidationSchema = z.object({
     venue: z.string().optional(),
     eventLink: z.string().url().optional(),
     visibility: z.nativeEnum(EventVisibility).optional(),
+    status: z.nativeEnum(EventStatus).optional(),
     registrationFee: z.coerce.number().min(0).optional(),
   }),
 });

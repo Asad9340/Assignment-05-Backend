@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import status from 'http-status';
 import {
+  EventStatus,
   FeeType,
   EventVisibility,
   ParticipationStatus,
@@ -29,6 +30,13 @@ const joinEvent = async (user: IRequestUser, eventId: string) => {
     throw new AppError(status.NOT_FOUND, 'Event not found');
   }
 
+  if (event.status !== EventStatus.ACTIVE) {
+    throw new AppError(
+      status.BAD_REQUEST,
+      'This event is not accepting new participants',
+    );
+  }
+
   if (event.ownerId === user.userId) {
     throw new AppError(status.BAD_REQUEST, 'Event owner cannot join own event');
   }
@@ -51,40 +59,37 @@ const joinEvent = async (user: IRequestUser, eventId: string) => {
   const participantData: any = {
     eventId,
     userId: user.userId,
+    status: ParticipationStatus.PENDING,
   };
 
   if (
     event.visibility === EventVisibility.PUBLIC &&
+    event.feeType === FeeType.PAID
+  ) {
+    participantData.paymentStatus = PaymentStatus.PENDING;
+  }
+
+  if (
+    event.visibility === EventVisibility.PRIVATE &&
     event.feeType === FeeType.FREE
   ) {
-    participantData.status = ParticipationStatus.JOINED;
     participantData.paymentStatus = PaymentStatus.PAID;
     participantData.paidAmount = 0;
+  }
+
+  if (
+    event.visibility === EventVisibility.PRIVATE &&
+    event.feeType === FeeType.PAID
+  ) {
+    participantData.paymentStatus = PaymentStatus.PENDING;
   }
 
   if (
     event.visibility === EventVisibility.PUBLIC &&
-    event.feeType === FeeType.PAID
-  ) {
-    participantData.status = ParticipationStatus.PENDING;
-    participantData.paymentStatus = PaymentStatus.PENDING;
-  }
-
-  if (
-    event.visibility === EventVisibility.PRIVATE &&
     event.feeType === FeeType.FREE
   ) {
-    participantData.status = ParticipationStatus.PENDING;
     participantData.paymentStatus = PaymentStatus.PAID;
     participantData.paidAmount = 0;
-  }
-
-  if (
-    event.visibility === EventVisibility.PRIVATE &&
-    event.feeType === FeeType.PAID
-  ) {
-    participantData.status = ParticipationStatus.PENDING;
-    participantData.paymentStatus = PaymentStatus.PENDING;
   }
 
   const participant = await prisma.eventParticipant.create({
@@ -223,6 +228,13 @@ const approveParticipant = async (
     throw new AppError(status.NOT_FOUND, 'Participant not found');
   }
 
+  if (participant.event.status !== EventStatus.ACTIVE) {
+    throw new AppError(
+      status.BAD_REQUEST,
+      'You cannot update participation on a non-active event',
+    );
+  }
+
   if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError(
       status.FORBIDDEN,
@@ -252,7 +264,7 @@ const approveParticipant = async (
       id: participantId,
     },
     data: {
-      status: ParticipationStatus.APPROVED,
+      status: ParticipationStatus.JOINED,
       approvedAt: new Date(),
     },
     include: {

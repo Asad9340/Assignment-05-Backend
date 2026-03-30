@@ -13,6 +13,12 @@ enum FeeType {
   PAID
 }
 
+enum EventStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
 enum ParticipationStatus {
   PENDING
   APPROVED

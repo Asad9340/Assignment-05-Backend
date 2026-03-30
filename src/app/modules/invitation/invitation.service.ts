@@ -1,6 +1,7 @@
 import status from 'http-status';
 import { EventInvitation, Prisma } from '../../../generated/prisma/client';
 import {
+  EventStatus,
   FeeType,
   ParticipationStatus,
   PaymentStatus,
@@ -32,6 +33,13 @@ const inviteUser = async (
 
   if (!event) {
     throw new AppError(status.NOT_FOUND, 'Event not found');
+  }
+
+  if (event.status !== EventStatus.ACTIVE) {
+    throw new AppError(
+      status.BAD_REQUEST,
+      'Cannot invite users to a non-active event',
+    );
   }
 
   if (event.ownerId !== user.userId && user.role !== Role.ADMIN) {
@@ -179,10 +187,10 @@ const acceptInvitation = async (user: IRequestUser, invitationId: string) => {
     );
   }
 
-  if (invitation.event.feeType === FeeType.PAID) {
+  if (invitation.event.status !== EventStatus.ACTIVE) {
     throw new AppError(
       status.BAD_REQUEST,
-      'This invitation requires payment. Use pay and accept flow',
+      'This event is not accepting new participants',
     );
   }
 
@@ -212,9 +220,12 @@ const acceptInvitation = async (user: IRequestUser, invitationId: string) => {
       data: {
         eventId: invitation.eventId,
         userId: user.userId,
-        status: ParticipationStatus.JOINED,
-        paymentStatus: PaymentStatus.PAID,
-        paidAmount: 0,
+        status: ParticipationStatus.PENDING,
+        paymentStatus:
+          invitation.event.feeType === FeeType.PAID
+            ? PaymentStatus.PENDING
+            : PaymentStatus.PAID,
+        paidAmount: invitation.event.feeType === FeeType.PAID ? null : 0,
       },
       include: {
         event: true,

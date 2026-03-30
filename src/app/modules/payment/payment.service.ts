@@ -26,10 +26,15 @@ import {
 } from './payment.constant';
 
 const getBackendBaseUrl = () => {
+  const rawBaseUrl =
+    process.env.BACKEND_URL ||
+    envVars.BETTER_AUTH_URL ||
+    `http://localhost:${envVars.PORT}`;
+
   try {
-    return new URL(envVars.BETTER_AUTH_URL).origin;
+    return new URL(rawBaseUrl).origin;
   } catch {
-    return envVars.BETTER_AUTH_URL;
+    return rawBaseUrl;
   }
 };
 
@@ -320,12 +325,23 @@ const handlePaymentCancel = async (
     throw new AppError(httpStatus.NOT_FOUND, 'Transaction not found');
   }
 
-  await prisma.paymentTransaction.update({
-    where: { trxId },
-    data: {
-      status: TransactionStatus.CANCELLED,
-      gatewayResponse: toJsonValue(payload),
-    },
+  await prisma.$transaction(async tx => {
+    await tx.paymentTransaction.update({
+      where: { trxId },
+      data: {
+        status: TransactionStatus.CANCELLED,
+        gatewayResponse: toJsonValue(payload),
+      },
+    });
+
+    if (transaction.eventParticipantId) {
+      await tx.eventParticipant.update({
+        where: { id: transaction.eventParticipantId },
+        data: {
+          paymentStatus: PaymentStatus.FAILED,
+        },
+      });
+    }
   });
 
   return null;

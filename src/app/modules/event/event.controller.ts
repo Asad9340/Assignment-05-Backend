@@ -32,6 +32,17 @@ const getAllEvents = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getMyEvents = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.getMyEvents(req.user as IRequestUser);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'My events retrieved successfully',
+    data: result,
+  });
+});
+
 const getUpcomingPublicEvents = catchAsync(
   async (_req: Request, res: Response) => {
     const result = await EventService.getUpcomingPublicEvents();
@@ -46,7 +57,9 @@ const getUpcomingPublicEvents = catchAsync(
 );
 
 const getSingleEvent = catchAsync(async (req: Request, res: Response) => {
-  const result = await EventService.getSingleEvent(req.params.eventId as string);
+  const result = await EventService.getSingleEvent(
+    req.params.eventId as string,
+  );
 
   sendResponse(res, {
     httpStatusCode: status.OK,
@@ -84,10 +97,11 @@ const deleteEvent = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 });
- 
+
 export const EventController = {
   createEvent,
   getAllEvents,
+  getMyEvents,
   getUpcomingPublicEvents,
   getSingleEvent,
   updateEvent,

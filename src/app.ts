@@ -10,6 +10,7 @@ import path from 'path';
 import qs from 'qs';
 import cors from 'cors';
 import { envVars } from './app/config/env.config';
+import { prismaSchemaReady } from './app/lib/prisma';
 
 const app: Application = express();
 app.set('query parser', (str: string) => qs.parse(str));
@@ -29,6 +30,11 @@ app.use(express.urlencoded({ extended: true }));
 dotenv.config();
 app.use(express.json());
 app.use(cookieParser());
+
+app.use(async (_req, _res, next) => {
+  await prismaSchemaReady;
+  next();
+});
 
 app.use('/api/v1', IndexRoutes);
 app.get('/', (req: Request, res: Response) => {

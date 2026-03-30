@@ -77,6 +77,21 @@ const getPendingApprovals = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getMyEventStatusSummary = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await DashboardService.getMyEventStatusSummary(
+      req.user as IRequestUser,
+    );
+
+    sendResponse(res, {
+      httpStatusCode: status.OK,
+      success: true,
+      message: 'My event participation status summary retrieved successfully',
+      data: result,
+    });
+  },
+);
+
 export const DashboardController = {
   getSummary,
   getMyEvents,
@@ -84,4 +99,5 @@ export const DashboardController = {
   getMyReviews,
   getMyRequests,
   getPendingApprovals,
+  getMyEventStatusSummary,
 };

@@ -8,6 +8,7 @@ model Event {
 
   visibility      EventVisibility
   feeType         FeeType         @default(FREE)
+  status          EventStatus     @default(ACTIVE)
   registrationFee Float           @default(0)
 
   ownerId String
@@ -27,6 +28,7 @@ model Event {
   @@index([isDeleted])
   @@index([eventDateTime])
   @@index([ownerId])
+  @@index([status])
   @@index([isDeleted, visibility, eventDateTime])
 }
 

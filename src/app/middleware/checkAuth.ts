@@ -17,10 +17,6 @@ export const checkAuth =
         CookieUtils.getCookie(req, 'better-auth.session_token') ||
         CookieUtils.getCookie(req, 'better-auth.session-token');
 
-      if (!sessionToken) {
-        throw new Error('Unauthorized access! No session token provided.');
-      }
-
       if (sessionToken) {
         const sessionExists = await prisma.session.findFirst({
           where: {
@@ -87,15 +83,6 @@ export const checkAuth =
             emailVerified: user.emailVerified,
           };
         }
-
-        const accessToken = CookieUtils.getCookie(req, 'accessToken');
-
-        if (!accessToken) {
-          throw new AppError(
-            status.UNAUTHORIZED,
-            'Unauthorized access! No access token provided.',
-          );
-        }
       }
 
       //Access Token Verification
@@ -119,10 +106,49 @@ export const checkAuth =
         );
       }
 
-      if (
-        authRoles.length > 0 &&
-        !authRoles.includes(verifiedToken.data!.role as Role)
-      ) {
+      if (!req.user) {
+        const tokenData = verifiedToken.data as {
+          userId?: string;
+          role?: Role;
+        };
+
+        if (!tokenData?.userId) {
+          throw new AppError(
+            status.UNAUTHORIZED,
+            'Unauthorized access! Invalid token payload.',
+          );
+        }
+
+        const user = await prisma.user.findFirst({
+          where: {
+            id: tokenData.userId,
+            isDeleted: false,
+          },
+        });
+
+        if (
+          !user ||
+          user.status === UserStatus.BLOCKED ||
+          user.status === UserStatus.DELETED
+        ) {
+          throw new AppError(
+            status.UNAUTHORIZED,
+            'Unauthorized access! User is not active.',
+          );
+        }
+
+        req.user = {
+          userId: user.id,
+          name: user.name,
+          role: user.role,
+          email: user.email,
+          status: user.status,
+          isDeleted: user.isDeleted,
+          emailVerified: user.emailVerified,
+        };
+      }
+
+      if (authRoles.length > 0 && !authRoles.includes(req.user.role)) {
         throw new AppError(
           status.FORBIDDEN,
           'Forbidden access! You do not have permission to access this resource.',

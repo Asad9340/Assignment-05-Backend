@@ -23,6 +23,12 @@ router.get(
 );
 
 router.patch(
+  '/:participantId/accept',
+  checkAuth(Role.ADMIN, Role.USER),
+  ParticipationController.acceptParticipant,
+);
+
+router.patch(
   '/:participantId/approve',
   checkAuth(Role.ADMIN, Role.USER),
   ParticipationController.approveParticipant,

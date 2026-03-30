@@ -55,7 +55,21 @@ const approveParticipant = catchAsync(async (req: Request, res: Response) => {
   sendResponse(res, {
     httpStatusCode: status.OK,
     success: true,
-    message: 'Participant approved successfully',
+    message: 'Participant accepted and joined successfully',
+    data: result,
+  });
+});
+
+const acceptParticipant = catchAsync(async (req: Request, res: Response) => {
+  const result = await ParticipationService.approveParticipant(
+    req.user as IRequestUser,
+    req.params.participantId as string,
+  );
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Participant accepted and joined successfully',
     data: result,
   });
 });
@@ -92,6 +106,7 @@ export const ParticipationController = {
   joinEvent,
   getMyParticipations,
   getEventParticipants,
+  acceptParticipant,
   approveParticipant,
   rejectParticipant,
   banParticipant,

@@ -16,6 +16,20 @@ const getMe = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const searchUsers = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserService.searchUsers(
+    req.user as IRequestUser,
+    req.query as Record<string, string | undefined>,
+  );
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Users retrieved successfully',
+    data: result,
+  });
+});
+
 const updateMe = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.updateMe(req.user as IRequestUser, req.body);
 
@@ -39,6 +53,7 @@ const deleteMe = catchAsync(async (req: Request, res: Response) => {
 });
 
 export const UserController = {
+  searchUsers,
   getMe,
   updateMe,
   deleteMe,
