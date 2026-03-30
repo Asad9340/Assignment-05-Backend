@@ -1,5 +1,8 @@
 import status from 'http-status';
-import { ParticipationStatus } from '../../../generated/prisma/enums';
+import {
+  EventStatus,
+  ParticipationStatus,
+} from '../../../generated/prisma/enums';
 import { ICreateReviewPayload, IUpdateReviewPayload } from './review.interface';
 import { IRequestUser } from '../../interfaces/requestUser.interface';
 import { prisma } from '../../lib/prisma';
@@ -23,10 +26,10 @@ const createReview = async (
     throw new AppError(status.NOT_FOUND, 'Event not found');
   }
 
-  if (event.eventDateTime > new Date()) {
+  if (event.status !== EventStatus.COMPLETED) {
     throw new AppError(
       status.BAD_REQUEST,
-      'You can review only after event date',
+      'You can review only after the event is completed by the owner',
     );
   }
 

@@ -11,7 +11,7 @@ import { PAYMENT_MESSAGE } from './payment.constant';
 import { PaymentService } from './payment.service';
 
 const buildFrontendRedirectUrl = (
-  path: '/payment/success' | '/payment/fail' | '/payment/cancel',
+  path: '/payment/success' | '/payment/fail' | '/payment/cancel' | '/dashboard',
   trxId?: string,
 ) => {
   const frontendUrl = envVars.FRONTEND_URL.replace(/\/$/, '');
@@ -22,6 +22,13 @@ const buildFrontendRedirectUrl = (
   }
 
   return url.toString();
+};
+
+const getTrxIdFromCallback = (req: Request) => {
+  return (req.query.trxId ||
+    req.query.tran_id ||
+    req.body?.trxId ||
+    req.body?.tran_id) as string | undefined;
 };
 
 const initiatePayment = catchAsync(async (req: Request, res: Response) => {
@@ -39,9 +46,7 @@ const initiatePayment = catchAsync(async (req: Request, res: Response) => {
 });
 
 const paymentSuccess = async (req: Request, res: Response) => {
-  const trxId = (req.query.trxId || req.body?.trxId || req.body?.tran_id) as
-    | string
-    | undefined;
+  const trxId = getTrxIdFromCallback(req);
   const valId = (req.query.val_id || req.body?.val_id) as string | undefined;
 
   try {
@@ -54,16 +59,14 @@ const paymentSuccess = async (req: Request, res: Response) => {
       ...(req.body as Record<string, unknown>),
     });
 
-    return res.redirect(buildFrontendRedirectUrl('/payment/success', trxId));
+    return res.redirect(buildFrontendRedirectUrl('/dashboard', trxId));
   } catch {
     return res.redirect(buildFrontendRedirectUrl('/payment/fail', trxId));
   }
 };
 
 const paymentFail = async (req: Request, res: Response) => {
-  const trxId = (req.query.trxId || req.body?.trxId || req.body?.tran_id) as
-    | string
-    | undefined;
+  const trxId = getTrxIdFromCallback(req);
 
   try {
     if (!trxId) {
@@ -82,9 +85,7 @@ const paymentFail = async (req: Request, res: Response) => {
 };
 
 const paymentCancel = async (req: Request, res: Response) => {
-  const trxId = (req.query.trxId || req.body?.trxId || req.body?.tran_id) as
-    | string
-    | undefined;
+  const trxId = getTrxIdFromCallback(req);
 
   try {
     if (!trxId) {
@@ -120,7 +121,10 @@ const validateTransaction = catchAsync(async (req: Request, res: Response) => {
   const result = await PaymentService.validateExistingTransaction(trxId);
 
   if (user.role !== Role.ADMIN && result.userId !== user.userId) {
-    throw new AppError(status.FORBIDDEN, 'You are not allowed to view this transaction');
+    throw new AppError(
+      status.FORBIDDEN,
+      'You are not allowed to view this transaction',
+    );
   }
 
   sendResponse(res, {

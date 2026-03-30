@@ -4,6 +4,7 @@ import { ParticipationService } from './participation.service';
 import catchAsync from '../../shared/catchAsync';
 import { IRequestUser } from '../../interfaces/requestUser.interface';
 import { sendResponse } from '../../shared/sendResponse';
+import { IQueryParams } from '../../interfaces/query.interface';
 
 const joinEvent = catchAsync(async (req: Request, res: Response) => {
   const result = await ParticipationService.joinEvent(
@@ -22,6 +23,7 @@ const joinEvent = catchAsync(async (req: Request, res: Response) => {
 const getMyParticipations = catchAsync(async (req: Request, res: Response) => {
   const result = await ParticipationService.getMyParticipations(
     req.user as IRequestUser,
+    req.query as IQueryParams,
   );
 
   sendResponse(res, {

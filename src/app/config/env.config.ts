@@ -82,9 +82,9 @@ const loadEnvVariables = (): EnvConfig => {
     NODE_ENV: process.env.NODE_ENV as string,
     PORT: process.env.PORT as string,
     DATABASE_URL: process.env.DATABASE_URL as string,
-    FRONTEND_URL: process.env.FRONTEND_URL as string,
+    FRONTEND_URL: process.env.FRONTEND_URL?.trim() as string,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET as string,
-    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL as string,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL?.trim() as string,
     ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET as string,
     REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET as string,
     ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN as string,
@@ -109,9 +109,9 @@ const loadEnvVariables = (): EnvConfig => {
       CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET as string,
     },
     SSLCOMMERZ: {
-      SSL_STORE_ID: process.env.SSL_STORE_ID as string,
-      SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD as string,
-      SSL_IS_LIVE: process.env.SSL_IS_LIVE as string,
+      SSL_STORE_ID: process.env.SSL_STORE_ID?.trim() as string,
+      SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD?.trim() as string,
+      SSL_IS_LIVE: process.env.SSL_IS_LIVE?.trim() as string,
     },
   };
 };

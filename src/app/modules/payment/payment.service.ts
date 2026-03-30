@@ -1,6 +1,7 @@
 import httpStatus from 'http-status';
 import {
   sslCommerzInitPayment,
+  sslCommerzQueryTransactionByTransactionId,
   sslCommerzValidatePayment,
 } from './payment.utils';
 import { TInitiatePaymentPayload } from './payment.interface';
@@ -151,6 +152,7 @@ const initiateEventPayment = async (
   const sslPayload = {
     store_id: envVars.SSLCOMMERZ.SSL_STORE_ID,
     store_passwd: envVars.SSLCOMMERZ.SSL_STORE_PASSWORD,
+    productcategory: 'Events',
     total_amount: Number(event.registrationFee),
     currency: 'BDT',
     tran_id: trxId,
@@ -165,9 +167,20 @@ const initiateEventPayment = async (
     cus_name: user.name,
     cus_email: user.email,
     cus_add1: 'Dhaka',
+    cus_add2: 'Dhaka',
     cus_city: 'Dhaka',
+    cus_state: 'Dhaka',
+    cus_postcode: '1207',
     cus_country: 'Bangladesh',
     cus_phone: '01700000000',
+    num_of_item: 1,
+    ship_name: user.name,
+    ship_add1: 'Dhaka',
+    ship_add2: 'Dhaka',
+    ship_city: 'Dhaka',
+    ship_state: 'Dhaka',
+    ship_postcode: '1207',
+    ship_country: 'Bangladesh',
   };
 
   const sslResponse = await sslCommerzInitPayment(sslPayload);
@@ -181,9 +194,13 @@ const initiateEventPayment = async (
       },
     });
 
+    const failureReason = sslResponse?.failedreason || sslResponse?.status;
+
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      'Failed to initialize payment session',
+      failureReason
+        ? `Failed to initialize payment session: ${failureReason}`
+        : 'Failed to initialize payment session',
     );
   }
 
@@ -218,11 +235,17 @@ const handlePaymentSuccess = async (
     throw new AppError(httpStatus.NOT_FOUND, 'Transaction not found');
   }
 
-  if (!valId) {
-    throw new AppError(httpStatus.BAD_REQUEST, 'val_id is missing');
+  if (transaction.status === TransactionStatus.VALID) {
+    return transaction;
   }
 
-  const validationResponse = await sslCommerzValidatePayment(valId);
+  const validationResponse = valId
+    ? await sslCommerzValidatePayment(valId)
+    : await sslCommerzQueryTransactionByTransactionId(trxId);
+
+  if (validationResponse?.tran_id && validationResponse.tran_id !== trxId) {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Transaction mismatch detected');
+  }
 
   const validatedStatus = validationResponse?.status;
 
@@ -252,7 +275,7 @@ const handlePaymentSuccess = async (
       where: { trxId },
       data: {
         status: TransactionStatus.VALID,
-        valId,
+        valId: validationResponse.val_id || valId || null,
         gatewayTransactionId: validationResponse.tran_id || trxId,
         bankTransactionId: validationResponse.bank_tran_id,
         cardType: validationResponse.card_type,
@@ -367,9 +390,7 @@ const handlePaymentIPN = async (payload: Record<string, unknown>) => {
     return null;
   }
 
-  if (valId) {
-    await handlePaymentSuccess(trxId, valId, payload);
-  }
+  await handlePaymentSuccess(trxId, valId, payload);
 
   return null;
 };

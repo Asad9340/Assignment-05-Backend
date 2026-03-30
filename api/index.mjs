@@ -147,9 +147,9 @@ var loadEnvVariables = () => {
     NODE_ENV: process.env.NODE_ENV,
     PORT: process.env.PORT,
     DATABASE_URL: process.env.DATABASE_URL,
-    FRONTEND_URL: process.env.FRONTEND_URL,
+    FRONTEND_URL: process.env.FRONTEND_URL?.trim(),
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
-    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL?.trim(),
     ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET,
     REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
     ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN,
@@ -172,9 +172,9 @@ var loadEnvVariables = () => {
       CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
     },
     SSLCOMMERZ: {
-      SSL_STORE_ID: process.env.SSL_STORE_ID,
-      SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD,
-      SSL_IS_LIVE: process.env.SSL_IS_LIVE
+      SSL_STORE_ID: process.env.SSL_STORE_ID?.trim(),
+      SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD?.trim(),
+      SSL_IS_LIVE: process.env.SSL_IS_LIVE?.trim()
     }
   };
 };
@@ -3140,10 +3140,10 @@ var createReview = async (user, eventId, payload) => {
   if (!event) {
     throw new AppError_default(status14.NOT_FOUND, "Event not found");
   }
-  if (event.eventDateTime > /* @__PURE__ */ new Date()) {
+  if (event.status !== EventStatus.COMPLETED) {
     throw new AppError_default(
       status14.BAD_REQUEST,
-      "You can review only after event date"
+      "You can review only after the event is completed by the owner"
     );
   }
   const participant = await prisma.eventParticipant.findFirst({
@@ -3491,34 +3491,53 @@ var paymentIncludeConfig = {
 import httpStatus from "http-status";
 
 // src/app/modules/payment/payment.utils.ts
+var isTruthy = (value) => {
+  return ["true", "1", "yes"].includes(value.trim().toLowerCase());
+};
 var getSSLBaseUrl = () => {
-  return envVars.SSLCOMMERZ.SSL_IS_LIVE ? "https://securepay.sslcommerz.com" : "https://sandbox.sslcommerz.com";
+  return isTruthy(envVars.SSLCOMMERZ.SSL_IS_LIVE) ? "https://securepay.sslcommerz.com" : "https://sandbox.sslcommerz.com";
 };
 var sslCommerzInitPayment = async (payload) => {
   const url = `${getSSLBaseUrl()}/gwprocess/v4/api.php`;
-  const formBody = new URLSearchParams(
-    Object.entries(payload).reduce(
-      (acc, [key, value]) => {
-        acc[key] = String(value);
-        return acc;
-      },
-      {}
-    )
-  );
+  const formData = new FormData();
+  Object.entries(payload).forEach(([key, value]) => {
+    formData.append(key, String(value));
+  });
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: formBody
+    body: formData
   });
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    const responseText = await response.text();
+    data = {
+      status: "FAILED",
+      failedreason: responseText || "Invalid gateway response"
+    };
+  }
   return data;
 };
 var sslCommerzValidatePayment = async (valId) => {
   const url = `${getSSLBaseUrl()}/validator/api/validationserverAPI.php`;
   const queryParams = new URLSearchParams({
     val_id: valId,
+    store_id: envVars.SSLCOMMERZ.SSL_STORE_ID,
+    store_passwd: envVars.SSLCOMMERZ.SSL_STORE_PASSWORD,
+    v: "1",
+    format: "json"
+  });
+  const response = await fetch(`${url}?${queryParams.toString()}`, {
+    method: "GET"
+  });
+  const data = await response.json();
+  return data;
+};
+var sslCommerzQueryTransactionByTransactionId = async (trxId) => {
+  const url = `${getSSLBaseUrl()}/validator/api/merchantTransIDvalidationAPI.php`;
+  const queryParams = new URLSearchParams({
+    tran_id: trxId,
     store_id: envVars.SSLCOMMERZ.SSL_STORE_ID,
     store_passwd: envVars.SSLCOMMERZ.SSL_STORE_PASSWORD,
     v: "1",
@@ -3630,6 +3649,7 @@ var initiateEventPayment = async (userId, payload) => {
   const sslPayload = {
     store_id: envVars.SSLCOMMERZ.SSL_STORE_ID,
     store_passwd: envVars.SSLCOMMERZ.SSL_STORE_PASSWORD,
+    productcategory: "Events",
     total_amount: Number(event.registrationFee),
     currency: "BDT",
     tran_id: trxId,
@@ -3644,9 +3664,20 @@ var initiateEventPayment = async (userId, payload) => {
     cus_name: user.name,
     cus_email: user.email,
     cus_add1: "Dhaka",
+    cus_add2: "Dhaka",
     cus_city: "Dhaka",
+    cus_state: "Dhaka",
+    cus_postcode: "1207",
     cus_country: "Bangladesh",
-    cus_phone: "01700000000"
+    cus_phone: "01700000000",
+    num_of_item: 1,
+    ship_name: user.name,
+    ship_add1: "Dhaka",
+    ship_add2: "Dhaka",
+    ship_city: "Dhaka",
+    ship_state: "Dhaka",
+    ship_postcode: "1207",
+    ship_country: "Bangladesh"
   };
   const sslResponse = await sslCommerzInitPayment(sslPayload);
   if (!sslResponse?.GatewayPageURL && !sslResponse?.gatewayPageURL) {
@@ -3657,9 +3688,10 @@ var initiateEventPayment = async (userId, payload) => {
         gatewayResponse: toJsonValue(sslResponse)
       }
     });
+    const failureReason = sslResponse?.failedreason || sslResponse?.status;
     throw new AppError_default(
       httpStatus.BAD_REQUEST,
-      "Failed to initialize payment session"
+      failureReason ? `Failed to initialize payment session: ${failureReason}` : "Failed to initialize payment session"
     );
   }
   await prisma.paymentTransaction.update({
@@ -3685,10 +3717,13 @@ var handlePaymentSuccess = async (trxId, valId, payload) => {
   if (!transaction) {
     throw new AppError_default(httpStatus.NOT_FOUND, "Transaction not found");
   }
-  if (!valId) {
-    throw new AppError_default(httpStatus.BAD_REQUEST, "val_id is missing");
+  if (transaction.status === TransactionStatus.VALID) {
+    return transaction;
   }
-  const validationResponse = await sslCommerzValidatePayment(valId);
+  const validationResponse = valId ? await sslCommerzValidatePayment(valId) : await sslCommerzQueryTransactionByTransactionId(trxId);
+  if (validationResponse?.tran_id && validationResponse.tran_id !== trxId) {
+    throw new AppError_default(httpStatus.BAD_REQUEST, "Transaction mismatch detected");
+  }
   const validatedStatus = validationResponse?.status;
   if (validatedStatus !== "VALID" && validatedStatus !== "VALIDATED") {
     await prisma.paymentTransaction.update({
@@ -3713,7 +3748,7 @@ var handlePaymentSuccess = async (trxId, valId, payload) => {
       where: { trxId },
       data: {
         status: TransactionStatus.VALID,
-        valId,
+        valId: validationResponse.val_id || valId || null,
         gatewayTransactionId: validationResponse.tran_id || trxId,
         bankTransactionId: validationResponse.bank_tran_id,
         cardType: validationResponse.card_type,
@@ -3802,9 +3837,7 @@ var handlePaymentIPN = async (payload) => {
   if (transaction.status === TransactionStatus.VALID) {
     return null;
   }
-  if (valId) {
-    await handlePaymentSuccess(trxId, valId, payload);
-  }
+  await handlePaymentSuccess(trxId, valId, payload);
   return null;
 };
 var validateExistingTransaction = async (trxId) => {
@@ -3954,6 +3987,9 @@ var buildFrontendRedirectUrl = (path4, trxId) => {
   }
   return url.toString();
 };
+var getTrxIdFromCallback = (req) => {
+  return req.query.trxId || req.query.tran_id || req.body?.trxId || req.body?.tran_id;
+};
 var initiatePayment = catchAsync_default(async (req, res) => {
   const result = await PaymentService.initiateEventPayment(
     req.user.userId,
@@ -3967,7 +4003,7 @@ var initiatePayment = catchAsync_default(async (req, res) => {
   });
 });
 var paymentSuccess = async (req, res) => {
-  const trxId = req.query.trxId || req.body?.trxId || req.body?.tran_id;
+  const trxId = getTrxIdFromCallback(req);
   const valId = req.query.val_id || req.body?.val_id;
   try {
     if (!trxId) {
@@ -3977,13 +4013,13 @@ var paymentSuccess = async (req, res) => {
       ...req.query,
       ...req.body
     });
-    return res.redirect(buildFrontendRedirectUrl("/payment/success", trxId));
+    return res.redirect(buildFrontendRedirectUrl("/dashboard", trxId));
   } catch {
     return res.redirect(buildFrontendRedirectUrl("/payment/fail", trxId));
   }
 };
 var paymentFail = async (req, res) => {
-  const trxId = req.query.trxId || req.body?.trxId || req.body?.tran_id;
+  const trxId = getTrxIdFromCallback(req);
   try {
     if (!trxId) {
       throw new AppError_default(status16.BAD_REQUEST, "trxId is required");
@@ -3997,7 +4033,7 @@ var paymentFail = async (req, res) => {
   return res.redirect(buildFrontendRedirectUrl("/payment/fail", trxId));
 };
 var paymentCancel = async (req, res) => {
-  const trxId = req.query.trxId || req.body?.trxId || req.body?.tran_id;
+  const trxId = getTrxIdFromCallback(req);
   try {
     if (!trxId) {
       throw new AppError_default(status16.BAD_REQUEST, "trxId is required");
@@ -4024,7 +4060,10 @@ var validateTransaction = catchAsync_default(async (req, res) => {
   const user = req.user;
   const result = await PaymentService.validateExistingTransaction(trxId);
   if (user.role !== Role.ADMIN && result.userId !== user.userId) {
-    throw new AppError_default(status16.FORBIDDEN, "You are not allowed to view this transaction");
+    throw new AppError_default(
+      status16.FORBIDDEN,
+      "You are not allowed to view this transaction"
+    );
   }
   sendResponse(res, {
     httpStatusCode: status16.OK,
