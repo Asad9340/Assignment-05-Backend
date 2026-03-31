@@ -116,25 +116,22 @@ export const auth = betterAuth({
       maxAge: 60 * 60 * 60 * 24,
     },
   },
-  redirectURLs: {
-    signIn: `${envVars.BETTER_AUTH_URL}/api/v1/auth/google/success`,
-  },
   trustedOrigins: [envVars.BETTER_AUTH_URL, envVars.FRONTEND_URL],
   advanced: {
-    useSecureCookies: false,
+    useSecureCookies: envVars.NODE_ENV === 'production',
     cookies: {
       state: {
         attributes: {
-          sameSite: 'none',
-          secure: true,
+          sameSite: envVars.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: envVars.NODE_ENV === 'production',
           httpOnly: true,
           path: '/',
         },
       },
       sessionToken: {
         attributes: {
-          sameSite: 'none',
-          secure: true,
+          sameSite: envVars.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: envVars.NODE_ENV === 'production',
           httpOnly: true,
           path: '/',
         },

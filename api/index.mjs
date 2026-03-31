@@ -2678,7 +2678,8 @@ var joinEvent2 = catchAsync_default(async (req, res) => {
 });
 var getMyParticipations2 = catchAsync_default(async (req, res) => {
   const result = await ParticipationService.getMyParticipations(
-    req.user
+    req.user,
+    req.query
   );
   sendResponse(res, {
     httpStatusCode: status11.OK,
