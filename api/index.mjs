@@ -1483,11 +1483,28 @@ var deleteMe2 = catchAsync_default(async (req, res) => {
     data: result
   });
 });
+var uploadAvatar = catchAsync_default(async (req, res) => {
+  const file2 = req.file;
+  if (!file2) {
+    throw new AppError_default(status7.BAD_REQUEST, "No image file provided");
+  }
+  const imageUrl = file2.path;
+  const result = await UserService.updateMe(req.user, {
+    image: imageUrl
+  });
+  sendResponse(res, {
+    httpStatusCode: status7.OK,
+    success: true,
+    message: "Profile image updated successfully",
+    data: { imageUrl: result.image }
+  });
+});
 var UserController = {
   searchUsers: searchUsers2,
   getMe: getMe4,
   updateMe: updateMe2,
-  deleteMe: deleteMe2
+  deleteMe: deleteMe2,
+  uploadAvatar
 };
 
 // src/app/modules/user/user.validation.ts
@@ -1514,6 +1531,57 @@ var validateRequest = (zodSchema) => {
   };
 };
 
+// src/app/config/multer.config.ts
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+
+// src/app/config/cloudinary.config.ts
+import { v2 as cloudinary } from "cloudinary";
+import status8 from "http-status";
+cloudinary.config({
+  cloud_name: envVars.CLOUDINARY.CLOUDINARY_CLOUD_NAME,
+  api_key: envVars.CLOUDINARY.CLOUDINARY_API_KEY,
+  api_secret: envVars.CLOUDINARY.CLOUDINARY_API_SECRET
+});
+var deleteFileFromCloudinary = async (url) => {
+  try {
+    const regex = /\/v\d+\/(.+?)(?:\.[a-zA-Z0-9]+)+$/;
+    const match = url.match(regex);
+    if (match && match[1]) {
+      const publicId = match[1];
+      await cloudinary.uploader.destroy(publicId, {
+        resource_type: "image"
+      });
+      console.log(`File ${publicId} deleted from cloudinary`);
+    }
+  } catch (error) {
+    console.error("Error deleting file from Cloudinary:", error);
+    throw new AppError_default(
+      status8.INTERNAL_SERVER_ERROR,
+      "Failed to delete file from Cloudinary"
+    );
+  }
+};
+var cloudinaryUpload = cloudinary;
+
+// src/app/config/multer.config.ts
+var storage = new CloudinaryStorage({
+  cloudinary: cloudinaryUpload,
+  params: async (req, file2) => {
+    const originalName = file2.originalname;
+    const extension = originalName.split(".").pop()?.toLocaleLowerCase();
+    const fileNameWithoutExtension = originalName.split(".").slice(0, -1).join(".").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+    const uniqueName = Math.random().toString(36).substring(2) + "-" + Date.now() + "-" + fileNameWithoutExtension;
+    const folder = extension === "pdf" ? "pdfs" : "images";
+    return {
+      folder: `ph-healthcare/${folder}`,
+      public_id: uniqueName,
+      resource_type: "auto"
+    };
+  }
+});
+var multerUpload = multer({ storage });
+
 // src/app/modules/user/user.route.ts
 var router2 = Router2();
 router2.get(
@@ -1529,16 +1597,22 @@ router2.patch(
   UserController.updateMe
 );
 router2.delete("/me", checkAuth(Role.ADMIN, Role.USER), UserController.deleteMe);
+router2.post(
+  "/me/avatar",
+  checkAuth(Role.ADMIN, Role.USER),
+  multerUpload.single("image"),
+  UserController.uploadAvatar
+);
 var UserRoutes = router2;
 
 // src/app/modules/event/event.route.ts
 import { Router as Router3 } from "express";
 
 // src/app/modules/event/event.controller.ts
-import status9 from "http-status";
+import status10 from "http-status";
 
 // src/app/modules/event/event.service.ts
-import status8 from "http-status";
+import status9 from "http-status";
 
 // src/app/utils/QueryBuilder.ts
 var QueryBuilder = class {
@@ -1957,7 +2031,7 @@ var eventIncludeConfig = {
 var buildEventDateTime = (eventDate, eventTime) => {
   const dateTime = /* @__PURE__ */ new Date(`${eventDate}T${eventTime}:00`);
   if (Number.isNaN(dateTime.getTime())) {
-    throw new AppError_default(status8.BAD_REQUEST, "Invalid event date or time");
+    throw new AppError_default(status9.BAD_REQUEST, "Invalid event date or time");
   }
   return dateTime;
 };
@@ -2120,7 +2194,7 @@ var getSingleEvent = async (eventId) => {
     }
   });
   if (!event) {
-    throw new AppError_default(status8.NOT_FOUND, "Event not found");
+    throw new AppError_default(status9.NOT_FOUND, "Event not found");
   }
   return event;
 };
@@ -2132,11 +2206,11 @@ var updateEvent = async (user, eventId, payload) => {
     }
   });
   if (!existingEvent) {
-    throw new AppError_default(status8.NOT_FOUND, "Event not found");
+    throw new AppError_default(status9.NOT_FOUND, "Event not found");
   }
   if (existingEvent.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError_default(
-      status8.FORBIDDEN,
+      status9.FORBIDDEN,
       "You are not allowed to update this event"
     );
   }
@@ -2186,11 +2260,11 @@ var deleteEvent = async (user, eventId) => {
     }
   });
   if (!existingEvent) {
-    throw new AppError_default(status8.NOT_FOUND, "Event not found");
+    throw new AppError_default(status9.NOT_FOUND, "Event not found");
   }
   if (existingEvent.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError_default(
-      status8.FORBIDDEN,
+      status9.FORBIDDEN,
       "You are not allowed to delete this event"
     );
   }
@@ -2222,7 +2296,7 @@ var createEvent2 = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status9.CREATED,
+    httpStatusCode: status10.CREATED,
     success: true,
     message: "Event created successfully",
     data: result
@@ -2231,7 +2305,7 @@ var createEvent2 = catchAsync_default(async (req, res) => {
 var getAllEvents2 = catchAsync_default(async (req, res) => {
   const result = await EventService.getAllEvents(req.query);
   sendResponse(res, {
-    httpStatusCode: status9.OK,
+    httpStatusCode: status10.OK,
     success: true,
     message: "Events retrieved successfully",
     data: result.data,
@@ -2241,7 +2315,7 @@ var getAllEvents2 = catchAsync_default(async (req, res) => {
 var getMyEvents2 = catchAsync_default(async (req, res) => {
   const result = await EventService.getMyEvents(req.user);
   sendResponse(res, {
-    httpStatusCode: status9.OK,
+    httpStatusCode: status10.OK,
     success: true,
     message: "My events retrieved successfully",
     data: result
@@ -2251,7 +2325,7 @@ var getUpcomingPublicEvents2 = catchAsync_default(
   async (_req, res) => {
     const result = await EventService.getUpcomingPublicEvents();
     sendResponse(res, {
-      httpStatusCode: status9.OK,
+      httpStatusCode: status10.OK,
       success: true,
       message: "Upcoming public events retrieved successfully",
       data: result
@@ -2263,7 +2337,7 @@ var getSingleEvent2 = catchAsync_default(async (req, res) => {
     req.params.eventId
   );
   sendResponse(res, {
-    httpStatusCode: status9.OK,
+    httpStatusCode: status10.OK,
     success: true,
     message: "Event retrieved successfully",
     data: result
@@ -2276,7 +2350,7 @@ var updateEvent2 = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status9.OK,
+    httpStatusCode: status10.OK,
     success: true,
     message: "Event updated successfully",
     data: result
@@ -2288,7 +2362,7 @@ var deleteEvent2 = catchAsync_default(async (req, res) => {
     req.params.eventId
   );
   sendResponse(res, {
-    httpStatusCode: status9.OK,
+    httpStatusCode: status10.OK,
     success: true,
     message: "Event deleted successfully",
     data: result
@@ -2369,10 +2443,10 @@ var EventRoutes = router3;
 import { Router as Router4 } from "express";
 
 // src/app/modules/participation/participation.controller.ts
-import status11 from "http-status";
+import status12 from "http-status";
 
 // src/app/modules/participation/participation.service.ts
-import status10 from "http-status";
+import status11 from "http-status";
 var participationSearchableFields = ["event.title", "event.venue"];
 var participationFilterableFields = ["status", "paymentStatus"];
 var joinEvent = async (user, eventId) => {
@@ -2383,16 +2457,16 @@ var joinEvent = async (user, eventId) => {
     }
   });
   if (!event) {
-    throw new AppError_default(status10.NOT_FOUND, "Event not found");
+    throw new AppError_default(status11.NOT_FOUND, "Event not found");
   }
   if (event.status !== EventStatus.ACTIVE) {
     throw new AppError_default(
-      status10.BAD_REQUEST,
+      status11.BAD_REQUEST,
       "This event is not accepting new participants"
     );
   }
   if (event.ownerId === user.userId) {
-    throw new AppError_default(status10.BAD_REQUEST, "Event owner cannot join own event");
+    throw new AppError_default(status11.BAD_REQUEST, "Event owner cannot join own event");
   }
   const existingParticipant = await prisma.eventParticipant.findFirst({
     where: {
@@ -2403,7 +2477,7 @@ var joinEvent = async (user, eventId) => {
   });
   if (existingParticipant) {
     throw new AppError_default(
-      status10.CONFLICT,
+      status11.CONFLICT,
       "You already requested or joined this event"
     );
   }
@@ -2474,11 +2548,11 @@ var getEventParticipants = async (user, eventId, query = {}) => {
     }
   });
   if (!event) {
-    throw new AppError_default(status10.NOT_FOUND, "Event not found");
+    throw new AppError_default(status11.NOT_FOUND, "Event not found");
   }
   if (event.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError_default(
-      status10.FORBIDDEN,
+      status11.FORBIDDEN,
       "You are not allowed to view participants"
     );
   }
@@ -2547,29 +2621,29 @@ var approveParticipant = async (user, participantId) => {
     }
   });
   if (!participant) {
-    throw new AppError_default(status10.NOT_FOUND, "Participant not found");
+    throw new AppError_default(status11.NOT_FOUND, "Participant not found");
   }
   if (participant.event.status !== EventStatus.ACTIVE) {
     throw new AppError_default(
-      status10.BAD_REQUEST,
+      status11.BAD_REQUEST,
       "You cannot update participation on a non-active event"
     );
   }
   if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError_default(
-      status10.FORBIDDEN,
+      status11.FORBIDDEN,
       "You are not allowed to approve this participant"
     );
   }
   if (participant.status !== ParticipationStatus.PENDING) {
     throw new AppError_default(
-      status10.BAD_REQUEST,
+      status11.BAD_REQUEST,
       "Only pending requests can be approved"
     );
   }
   if (participant.event.feeType === FeeType.PAID && participant.paymentStatus !== PaymentStatus.PAID) {
     throw new AppError_default(
-      status10.BAD_REQUEST,
+      status11.BAD_REQUEST,
       "Payment is required before approval"
     );
   }
@@ -2606,11 +2680,11 @@ var rejectParticipant = async (user, participantId) => {
     }
   });
   if (!participant) {
-    throw new AppError_default(status10.NOT_FOUND, "Participant not found");
+    throw new AppError_default(status11.NOT_FOUND, "Participant not found");
   }
   if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError_default(
-      status10.FORBIDDEN,
+      status11.FORBIDDEN,
       "You are not allowed to reject this participant"
     );
   }
@@ -2636,11 +2710,11 @@ var banParticipant = async (user, participantId) => {
     }
   });
   if (!participant) {
-    throw new AppError_default(status10.NOT_FOUND, "Participant not found");
+    throw new AppError_default(status11.NOT_FOUND, "Participant not found");
   }
   if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
     throw new AppError_default(
-      status10.FORBIDDEN,
+      status11.FORBIDDEN,
       "You are not allowed to ban this participant"
     );
   }
@@ -2672,7 +2746,7 @@ var joinEvent2 = catchAsync_default(async (req, res) => {
     req.params.eventId
   );
   sendResponse(res, {
-    httpStatusCode: status11.CREATED,
+    httpStatusCode: status12.CREATED,
     success: true,
     message: "Participation request created successfully",
     data: result
@@ -2684,7 +2758,7 @@ var getMyParticipations2 = catchAsync_default(async (req, res) => {
     req.query
   );
   sendResponse(res, {
-    httpStatusCode: status11.OK,
+    httpStatusCode: status12.OK,
     success: true,
     message: "My participations retrieved successfully",
     data: result
@@ -2696,7 +2770,7 @@ var getEventParticipants2 = catchAsync_default(async (req, res) => {
     req.params.eventId
   );
   sendResponse(res, {
-    httpStatusCode: status11.OK,
+    httpStatusCode: status12.OK,
     success: true,
     message: "Event participants retrieved successfully",
     data: result
@@ -2708,7 +2782,7 @@ var getMyPendingApprovals2 = catchAsync_default(
       req.user
     );
     sendResponse(res, {
-      httpStatusCode: status11.OK,
+      httpStatusCode: status12.OK,
       success: true,
       message: "My pending approvals retrieved successfully",
       data: result
@@ -2721,7 +2795,7 @@ var approveParticipant2 = catchAsync_default(async (req, res) => {
     req.params.participantId
   );
   sendResponse(res, {
-    httpStatusCode: status11.OK,
+    httpStatusCode: status12.OK,
     success: true,
     message: "Participant accepted and joined successfully",
     data: result
@@ -2733,7 +2807,7 @@ var acceptParticipant = catchAsync_default(async (req, res) => {
     req.params.participantId
   );
   sendResponse(res, {
-    httpStatusCode: status11.OK,
+    httpStatusCode: status12.OK,
     success: true,
     message: "Participant accepted and joined successfully",
     data: result
@@ -2745,7 +2819,7 @@ var rejectParticipant2 = catchAsync_default(async (req, res) => {
     req.params.participantId
   );
   sendResponse(res, {
-    httpStatusCode: status11.OK,
+    httpStatusCode: status12.OK,
     success: true,
     message: "Participant rejected successfully",
     data: result
@@ -2757,7 +2831,7 @@ var banParticipant2 = catchAsync_default(async (req, res) => {
     req.params.participantId
   );
   sendResponse(res, {
-    httpStatusCode: status11.OK,
+    httpStatusCode: status12.OK,
     success: true,
     message: "Participant banned successfully",
     data: result
@@ -2822,10 +2896,10 @@ var ParticipationRoutes = router4;
 import { Router as Router5 } from "express";
 
 // src/app/modules/invitation/invitation.controller.ts
-import status13 from "http-status";
+import status14 from "http-status";
 
 // src/app/modules/invitation/invitation.service.ts
-import status12 from "http-status";
+import status13 from "http-status";
 
 // src/app/modules/invitation/invitation.constant.ts
 var InvitationStatus = {
@@ -2845,19 +2919,19 @@ var inviteUser = async (user, eventId, payload) => {
     }
   });
   if (!event) {
-    throw new AppError_default(status12.NOT_FOUND, "Event not found");
+    throw new AppError_default(status13.NOT_FOUND, "Event not found");
   }
   if (event.status !== EventStatus.ACTIVE) {
     throw new AppError_default(
-      status12.BAD_REQUEST,
+      status13.BAD_REQUEST,
       "Cannot invite users to a non-active event"
     );
   }
   if (event.ownerId !== user.userId && user.role !== Role.ADMIN) {
-    throw new AppError_default(status12.FORBIDDEN, "You are not allowed to invite users");
+    throw new AppError_default(status13.FORBIDDEN, "You are not allowed to invite users");
   }
   if (payload.userId === event.ownerId) {
-    throw new AppError_default(status12.BAD_REQUEST, "Event owner cannot be invited");
+    throw new AppError_default(status13.BAD_REQUEST, "Event owner cannot be invited");
   }
   const invitedUser = await prisma.user.findUnique({
     where: {
@@ -2865,7 +2939,7 @@ var inviteUser = async (user, eventId, payload) => {
     }
   });
   if (!invitedUser || invitedUser.isDeleted || invitedUser.status === UserStatus.DELETED) {
-    throw new AppError_default(status12.NOT_FOUND, "Invited user not found");
+    throw new AppError_default(status13.NOT_FOUND, "Invited user not found");
   }
   const existingInvitation = await prisma.eventInvitation.findFirst({
     where: {
@@ -2875,7 +2949,7 @@ var inviteUser = async (user, eventId, payload) => {
     }
   });
   if (existingInvitation) {
-    throw new AppError_default(status12.CONFLICT, "Invitation already exists");
+    throw new AppError_default(status13.CONFLICT, "Invitation already exists");
   }
   const existingParticipant = await prisma.eventParticipant.findFirst({
     where: {
@@ -2886,7 +2960,7 @@ var inviteUser = async (user, eventId, payload) => {
   });
   if (existingParticipant) {
     throw new AppError_default(
-      status12.CONFLICT,
+      status13.CONFLICT,
       "User already joined or requested this event"
     );
   }
@@ -2950,17 +3024,17 @@ var acceptInvitation = async (user, invitationId) => {
     }
   });
   if (!invitation) {
-    throw new AppError_default(status12.NOT_FOUND, "Invitation not found");
+    throw new AppError_default(status13.NOT_FOUND, "Invitation not found");
   }
   if (invitation.status !== InvitationStatus.PENDING) {
     throw new AppError_default(
-      status12.BAD_REQUEST,
+      status13.BAD_REQUEST,
       "Only pending invitations can be accepted"
     );
   }
   if (invitation.event.status !== EventStatus.ACTIVE) {
     throw new AppError_default(
-      status12.BAD_REQUEST,
+      status13.BAD_REQUEST,
       "This event is not accepting new participants"
     );
   }
@@ -2972,7 +3046,7 @@ var acceptInvitation = async (user, invitationId) => {
     }
   });
   if (existingParticipant) {
-    throw new AppError_default(status12.CONFLICT, "Participant already exists");
+    throw new AppError_default(status13.CONFLICT, "Participant already exists");
   }
   const result = await prisma.$transaction(async (tx) => {
     await tx.eventInvitation.update({
@@ -3008,11 +3082,11 @@ var rejectInvitation = async (user, invitationId) => {
     }
   });
   if (!invitation) {
-    throw new AppError_default(status12.NOT_FOUND, "Invitation not found");
+    throw new AppError_default(status13.NOT_FOUND, "Invitation not found");
   }
   if (invitation.status !== InvitationStatus.PENDING) {
     throw new AppError_default(
-      status12.BAD_REQUEST,
+      status13.BAD_REQUEST,
       "Only pending invitations can be rejected"
     );
   }
@@ -3041,7 +3115,7 @@ var inviteUser2 = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status13.CREATED,
+    httpStatusCode: status14.CREATED,
     success: true,
     message: "Invitation sent successfully",
     data: result
@@ -3053,7 +3127,7 @@ var getMyInvitations2 = catchAsync_default(async (req, res) => {
     req.query
   );
   sendResponse(res, {
-    httpStatusCode: status13.OK,
+    httpStatusCode: status14.OK,
     success: true,
     message: "Invitations retrieved successfully",
     data: result.data,
@@ -3066,7 +3140,7 @@ var acceptInvitation2 = catchAsync_default(async (req, res) => {
     req.params.invitationId
   );
   sendResponse(res, {
-    httpStatusCode: status13.OK,
+    httpStatusCode: status14.OK,
     success: true,
     message: "Invitation accepted successfully",
     data: result
@@ -3078,7 +3152,7 @@ var rejectInvitation2 = catchAsync_default(async (req, res) => {
     req.params.invitationId
   );
   sendResponse(res, {
-    httpStatusCode: status13.OK,
+    httpStatusCode: status14.OK,
     success: true,
     message: "Invitation rejected successfully",
     data: result
@@ -3128,10 +3202,10 @@ var InvitationRoutes = router5;
 import { Router as Router6 } from "express";
 
 // src/app/modules/review/review.controller.ts
-import status15 from "http-status";
+import status16 from "http-status";
 
 // src/app/modules/review/review.service.ts
-import status14 from "http-status";
+import status15 from "http-status";
 var REVIEW_EDIT_WINDOW_DAYS = 7;
 var createReview = async (user, eventId, payload) => {
   const event = await prisma.event.findFirst({
@@ -3141,11 +3215,11 @@ var createReview = async (user, eventId, payload) => {
     }
   });
   if (!event) {
-    throw new AppError_default(status14.NOT_FOUND, "Event not found");
+    throw new AppError_default(status15.NOT_FOUND, "Event not found");
   }
   if (event.status !== EventStatus.COMPLETED) {
     throw new AppError_default(
-      status14.BAD_REQUEST,
+      status15.BAD_REQUEST,
       "You can review only after the event is completed by the owner"
     );
   }
@@ -3161,7 +3235,7 @@ var createReview = async (user, eventId, payload) => {
   });
   if (!participant) {
     throw new AppError_default(
-      status14.FORBIDDEN,
+      status15.FORBIDDEN,
       "You are not allowed to review this event"
     );
   }
@@ -3173,7 +3247,7 @@ var createReview = async (user, eventId, payload) => {
     }
   });
   if (existingReview) {
-    throw new AppError_default(status14.CONFLICT, "You already reviewed this event");
+    throw new AppError_default(status15.CONFLICT, "You already reviewed this event");
   }
   const review = await prisma.eventReview.create({
     data: {
@@ -3244,18 +3318,18 @@ var updateReview = async (user, reviewId, payload) => {
     }
   });
   if (!review) {
-    throw new AppError_default(status14.NOT_FOUND, "Review not found");
+    throw new AppError_default(status15.NOT_FOUND, "Review not found");
   }
   if (review.userId !== user.userId) {
     throw new AppError_default(
-      status14.FORBIDDEN,
+      status15.FORBIDDEN,
       "You are not allowed to update this review"
     );
   }
   const reviewDeadline = new Date(review.event.eventDateTime);
   reviewDeadline.setDate(reviewDeadline.getDate() + REVIEW_EDIT_WINDOW_DAYS);
   if (/* @__PURE__ */ new Date() > reviewDeadline) {
-    throw new AppError_default(status14.BAD_REQUEST, "Review edit period expired");
+    throw new AppError_default(status15.BAD_REQUEST, "Review edit period expired");
   }
   const updatedReview = await prisma.eventReview.update({
     where: {
@@ -3287,18 +3361,18 @@ var deleteReview = async (user, reviewId) => {
     }
   });
   if (!review) {
-    throw new AppError_default(status14.NOT_FOUND, "Review not found");
+    throw new AppError_default(status15.NOT_FOUND, "Review not found");
   }
   if (review.userId !== user.userId) {
     throw new AppError_default(
-      status14.FORBIDDEN,
+      status15.FORBIDDEN,
       "You are not allowed to delete this review"
     );
   }
   const reviewDeadline = new Date(review.event.eventDateTime);
   reviewDeadline.setDate(reviewDeadline.getDate() + REVIEW_EDIT_WINDOW_DAYS);
   if (/* @__PURE__ */ new Date() > reviewDeadline) {
-    throw new AppError_default(status14.BAD_REQUEST, "Review delete period expired");
+    throw new AppError_default(status15.BAD_REQUEST, "Review delete period expired");
   }
   const deletedReview = await prisma.eventReview.update({
     where: {
@@ -3327,7 +3401,7 @@ var createReview2 = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status15.CREATED,
+    httpStatusCode: status16.CREATED,
     success: true,
     message: "Review created successfully",
     data: result
@@ -3338,7 +3412,7 @@ var getEventReviews2 = catchAsync_default(async (req, res) => {
     req.params.eventId
   );
   sendResponse(res, {
-    httpStatusCode: status15.OK,
+    httpStatusCode: status16.OK,
     success: true,
     message: "Event reviews retrieved successfully",
     data: result
@@ -3347,7 +3421,7 @@ var getEventReviews2 = catchAsync_default(async (req, res) => {
 var getMyReviews2 = catchAsync_default(async (req, res) => {
   const result = await ReviewService.getMyReviews(req.user);
   sendResponse(res, {
-    httpStatusCode: status15.OK,
+    httpStatusCode: status16.OK,
     success: true,
     message: "My reviews retrieved successfully",
     data: result
@@ -3360,7 +3434,7 @@ var updateReview2 = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status15.OK,
+    httpStatusCode: status16.OK,
     success: true,
     message: "Review updated successfully",
     data: result
@@ -3372,7 +3446,7 @@ var deleteReview2 = catchAsync_default(async (req, res) => {
     req.params.reviewId
   );
   sendResponse(res, {
-    httpStatusCode: status15.OK,
+    httpStatusCode: status16.OK,
     success: true,
     message: "Review deleted successfully",
     data: result
@@ -3432,7 +3506,7 @@ var ReviewRoutes = router6;
 import { Router as Router7 } from "express";
 
 // src/app/modules/payment/payment.controller.ts
-import status16 from "http-status";
+import status17 from "http-status";
 
 // src/app/modules/payment/payment.constant.ts
 var PAYMENT_MESSAGE = {
@@ -3999,7 +4073,7 @@ var initiatePayment = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status16.CREATED,
+    httpStatusCode: status17.CREATED,
     success: true,
     message: PAYMENT_MESSAGE.INITIATED,
     data: result
@@ -4010,7 +4084,7 @@ var paymentSuccess = async (req, res) => {
   const valId = req.query.val_id || req.body?.val_id;
   try {
     if (!trxId) {
-      throw new AppError_default(status16.BAD_REQUEST, "trxId is required");
+      throw new AppError_default(status17.BAD_REQUEST, "trxId is required");
     }
     await PaymentService.handlePaymentSuccess(trxId, valId, {
       ...req.query,
@@ -4025,7 +4099,7 @@ var paymentFail = async (req, res) => {
   const trxId = getTrxIdFromCallback(req);
   try {
     if (!trxId) {
-      throw new AppError_default(status16.BAD_REQUEST, "trxId is required");
+      throw new AppError_default(status17.BAD_REQUEST, "trxId is required");
     }
     await PaymentService.handlePaymentFail(trxId, {
       ...req.query,
@@ -4039,7 +4113,7 @@ var paymentCancel = async (req, res) => {
   const trxId = getTrxIdFromCallback(req);
   try {
     if (!trxId) {
-      throw new AppError_default(status16.BAD_REQUEST, "trxId is required");
+      throw new AppError_default(status17.BAD_REQUEST, "trxId is required");
     }
     await PaymentService.handlePaymentCancel(trxId, {
       ...req.query,
@@ -4052,7 +4126,7 @@ var paymentCancel = async (req, res) => {
 var paymentIPN = catchAsync_default(async (req, res) => {
   await PaymentService.handlePaymentIPN(req.body);
   sendResponse(res, {
-    httpStatusCode: status16.OK,
+    httpStatusCode: status17.OK,
     success: true,
     message: PAYMENT_MESSAGE.IPN_RECEIVED,
     data: null
@@ -4064,12 +4138,12 @@ var validateTransaction = catchAsync_default(async (req, res) => {
   const result = await PaymentService.validateExistingTransaction(trxId);
   if (user.role !== Role.ADMIN && result.userId !== user.userId) {
     throw new AppError_default(
-      status16.FORBIDDEN,
+      status17.FORBIDDEN,
       "You are not allowed to view this transaction"
     );
   }
   sendResponse(res, {
-    httpStatusCode: status16.OK,
+    httpStatusCode: status17.OK,
     success: true,
     message: PAYMENT_MESSAGE.VERIFIED,
     data: result
@@ -4081,7 +4155,7 @@ var getMyPayments2 = catchAsync_default(async (req, res) => {
     req.query
   );
   sendResponse(res, {
-    httpStatusCode: status16.OK,
+    httpStatusCode: status17.OK,
     success: true,
     message: "My payments retrieved successfully",
     data: result.data,
@@ -4094,7 +4168,7 @@ var getAllPayments2 = catchAsync_default(async (req, res) => {
     req.query
   );
   sendResponse(res, {
-    httpStatusCode: status16.OK,
+    httpStatusCode: status17.OK,
     success: true,
     message: "All payments retrieved successfully",
     data: result.data,
@@ -4187,7 +4261,7 @@ var PaymentRoutes = router7;
 import { Router as Router8 } from "express";
 
 // src/app/modules/dashboard/dashboard.controller.ts
-import status17 from "http-status";
+import status18 from "http-status";
 
 // src/app/modules/dashboard/dashboard.service.ts
 var getSummary = async (user) => {
@@ -4421,7 +4495,7 @@ var DashboardService = {
 var getSummary2 = catchAsync_default(async (req, res) => {
   const result = await DashboardService.getSummary(req.user);
   sendResponse(res, {
-    httpStatusCode: status17.OK,
+    httpStatusCode: status18.OK,
     success: true,
     message: "Dashboard summary retrieved successfully",
     data: result
@@ -4430,7 +4504,7 @@ var getSummary2 = catchAsync_default(async (req, res) => {
 var getMyEvents4 = catchAsync_default(async (req, res) => {
   const result = await DashboardService.getMyEvents(req.user);
   sendResponse(res, {
-    httpStatusCode: status17.OK,
+    httpStatusCode: status18.OK,
     success: true,
     message: "My events retrieved successfully",
     data: result
@@ -4442,7 +4516,7 @@ var getPendingInvitations2 = catchAsync_default(
       req.user
     );
     sendResponse(res, {
-      httpStatusCode: status17.OK,
+      httpStatusCode: status18.OK,
       success: true,
       message: "Pending invitations retrieved successfully",
       data: result
@@ -4452,7 +4526,7 @@ var getPendingInvitations2 = catchAsync_default(
 var getMyReviews4 = catchAsync_default(async (req, res) => {
   const result = await DashboardService.getMyReviews(req.user);
   sendResponse(res, {
-    httpStatusCode: status17.OK,
+    httpStatusCode: status18.OK,
     success: true,
     message: "My reviews retrieved successfully",
     data: result
@@ -4461,7 +4535,7 @@ var getMyReviews4 = catchAsync_default(async (req, res) => {
 var getMyRequests2 = catchAsync_default(async (req, res) => {
   const result = await DashboardService.getMyRequests(req.user);
   sendResponse(res, {
-    httpStatusCode: status17.OK,
+    httpStatusCode: status18.OK,
     success: true,
     message: "My participation requests retrieved successfully",
     data: result
@@ -4472,7 +4546,7 @@ var getPendingApprovals2 = catchAsync_default(async (req, res) => {
     req.user
   );
   sendResponse(res, {
-    httpStatusCode: status17.OK,
+    httpStatusCode: status18.OK,
     success: true,
     message: "Pending approvals retrieved successfully",
     data: result
@@ -4484,7 +4558,7 @@ var getMyEventStatusSummary2 = catchAsync_default(
       req.user
     );
     sendResponse(res, {
-      httpStatusCode: status17.OK,
+      httpStatusCode: status18.OK,
       success: true,
       message: "My event participation status summary retrieved successfully",
       data: result
@@ -4544,10 +4618,10 @@ var DashboardRoutes = router8;
 import { Router as Router9 } from "express";
 
 // src/app/modules/admin/admin.controller.ts
-import status19 from "http-status";
+import status20 from "http-status";
 
 // src/app/modules/admin/admin.service.ts
-import status18 from "http-status";
+import status19 from "http-status";
 var getStats = async () => {
   const [totalUsers, totalEvents, totalReviews, totalParticipants] = await Promise.all([
     prisma.user.count({
@@ -4819,7 +4893,7 @@ var getUserById = async (userId) => {
     }
   });
   if (!user) {
-    throw new AppError_default(status18.NOT_FOUND, "User not found");
+    throw new AppError_default(status19.NOT_FOUND, "User not found");
   }
   return user;
 };
@@ -4893,20 +4967,20 @@ var updateUser = async (adminUser, userId, payload) => {
     }
   });
   if (!existingUser || existingUser.isDeleted) {
-    throw new AppError_default(status18.NOT_FOUND, "User not found");
+    throw new AppError_default(status19.NOT_FOUND, "User not found");
   }
   if (Object.keys(payload).length === 0) {
-    throw new AppError_default(status18.BAD_REQUEST, "No data provided");
+    throw new AppError_default(status19.BAD_REQUEST, "No data provided");
   }
   if (adminUser.userId === userId && (payload.role !== void 0 || payload.status !== void 0)) {
     throw new AppError_default(
-      status18.BAD_REQUEST,
+      status19.BAD_REQUEST,
       "You cannot change your own role or status from this endpoint"
     );
   }
   if (existingUser.role === Role.ADMIN && (payload.role !== void 0 || payload.status !== void 0)) {
     throw new AppError_default(
-      status18.BAD_REQUEST,
+      status19.BAD_REQUEST,
       "Admin account role or status cannot be changed from this endpoint"
     );
   }
@@ -4939,11 +5013,11 @@ var blockUser = async (userId) => {
     }
   });
   if (!existingUser || existingUser.isDeleted) {
-    throw new AppError_default(status18.NOT_FOUND, "User not found");
+    throw new AppError_default(status19.NOT_FOUND, "User not found");
   }
   if (existingUser.role === "ADMIN") {
     throw new AppError_default(
-      status18.BAD_REQUEST,
+      status19.BAD_REQUEST,
       "Admin accounts cannot be blocked from this endpoint"
     );
   }
@@ -4964,7 +5038,7 @@ var unblockUser = async (userId) => {
     }
   });
   if (!existingUser || existingUser.isDeleted) {
-    throw new AppError_default(status18.NOT_FOUND, "User not found");
+    throw new AppError_default(status19.NOT_FOUND, "User not found");
   }
   const updatedUser = await prisma.user.update({
     where: {
@@ -4983,11 +5057,11 @@ var deleteUser = async (userId) => {
     }
   });
   if (!existingUser || existingUser.isDeleted) {
-    throw new AppError_default(status18.NOT_FOUND, "User not found");
+    throw new AppError_default(status19.NOT_FOUND, "User not found");
   }
   if (existingUser.role === "ADMIN") {
     throw new AppError_default(
-      status18.BAD_REQUEST,
+      status19.BAD_REQUEST,
       "Admin accounts cannot be deleted from this endpoint"
     );
   }
@@ -5011,7 +5085,7 @@ var deleteEvent3 = async (eventId) => {
     }
   });
   if (!existingEvent) {
-    throw new AppError_default(status18.NOT_FOUND, "Event not found");
+    throw new AppError_default(status19.NOT_FOUND, "Event not found");
   }
   const updatedEvent = await prisma.event.update({
     where: {
@@ -5041,7 +5115,7 @@ var AdminService = {
 var getStats2 = catchAsync_default(async (_req, res) => {
   const result = await AdminService.getStats();
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "Admin stats retrieved successfully",
     data: result
@@ -5050,7 +5124,7 @@ var getStats2 = catchAsync_default(async (_req, res) => {
 var getReportsSummary2 = catchAsync_default(async (_req, res) => {
   const result = await AdminService.getReportsSummary();
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "Admin report summary retrieved successfully",
     data: result
@@ -5059,7 +5133,7 @@ var getReportsSummary2 = catchAsync_default(async (_req, res) => {
 var getAllUsers2 = catchAsync_default(async (req, res) => {
   const result = await AdminService.getAllUsers(req.query);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "Users retrieved successfully",
     data: result.data,
@@ -5069,7 +5143,7 @@ var getAllUsers2 = catchAsync_default(async (req, res) => {
 var getUserById2 = catchAsync_default(async (req, res) => {
   const result = await AdminService.getUserById(req.params.userId);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "User retrieved successfully",
     data: result
@@ -5078,7 +5152,7 @@ var getUserById2 = catchAsync_default(async (req, res) => {
 var getAllEvents4 = catchAsync_default(async (req, res) => {
   const result = await AdminService.getAllEvents(req.query);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "Events retrieved successfully",
     data: result.data,
@@ -5092,7 +5166,7 @@ var updateUser2 = catchAsync_default(async (req, res) => {
     req.body
   );
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "User updated successfully",
     data: result
@@ -5101,7 +5175,7 @@ var updateUser2 = catchAsync_default(async (req, res) => {
 var blockUser2 = catchAsync_default(async (req, res) => {
   const result = await AdminService.blockUser(req.params.userId);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "User blocked successfully",
     data: result
@@ -5110,7 +5184,7 @@ var blockUser2 = catchAsync_default(async (req, res) => {
 var unblockUser2 = catchAsync_default(async (req, res) => {
   const result = await AdminService.unblockUser(req.params.userId);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "User unblocked successfully",
     data: result
@@ -5119,7 +5193,7 @@ var unblockUser2 = catchAsync_default(async (req, res) => {
 var deleteUser2 = catchAsync_default(async (req, res) => {
   const result = await AdminService.deleteUser(req.params.userId);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "User deleted successfully",
     data: result
@@ -5128,7 +5202,7 @@ var deleteUser2 = catchAsync_default(async (req, res) => {
 var deleteEvent4 = catchAsync_default(async (req, res) => {
   const result = await AdminService.deleteEvent(req.params.eventId);
   sendResponse(res, {
-    httpStatusCode: status19.OK,
+    httpStatusCode: status20.OK,
     success: true,
     message: "Event deleted successfully",
     data: result
@@ -5217,9 +5291,9 @@ router10.use("/admin", AdminRoutes);
 var IndexRoutes = router10;
 
 // src/app/middleware/notFound.ts
-import status20 from "http-status";
+import status21 from "http-status";
 var notFound = (req, res) => {
-  res.status(status20.NOT_FOUND).json({
+  res.status(status21.NOT_FOUND).json({
     success: false,
     message: `Route ${req.originalUrl} Not Found`
   });
@@ -5230,9 +5304,9 @@ import status23 from "http-status";
 import z7 from "zod";
 
 // src/app/errorHelpers/handleZodError.ts
-import status21 from "http-status";
+import status22 from "http-status";
 var handleZodError = (err) => {
-  const statusCode = status21.BAD_REQUEST;
+  const statusCode = status22.BAD_REQUEST;
   const message = "Zod Validation Error";
   const errorSources = [];
   err.issues.forEach((issue) => {
@@ -5247,34 +5321,6 @@ var handleZodError = (err) => {
     errorSources,
     statusCode
   };
-};
-
-// src/app/config/cloudinary.config.ts
-import { v2 as cloudinary } from "cloudinary";
-import status22 from "http-status";
-cloudinary.config({
-  cloud_name: envVars.CLOUDINARY.CLOUDINARY_CLOUD_NAME,
-  api_key: envVars.CLOUDINARY.CLOUDINARY_API_KEY,
-  api_secret: envVars.CLOUDINARY.CLOUDINARY_API_SECRET
-});
-var deleteFileFromCloudinary = async (url) => {
-  try {
-    const regex = /\/v\d+\/(.+?)(?:\.[a-zA-Z0-9]+)+$/;
-    const match = url.match(regex);
-    if (match && match[1]) {
-      const publicId = match[1];
-      await cloudinary.uploader.destroy(publicId, {
-        resource_type: "image"
-      });
-      console.log(`File ${publicId} deleted from cloudinary`);
-    }
-  } catch (error) {
-    console.error("Error deleting file from Cloudinary:", error);
-    throw new AppError_default(
-      status22.INTERNAL_SERVER_ERROR,
-      "Failed to delete file from Cloudinary"
-    );
-  }
 };
 
 // src/app/middleware/globalErrorHandler.ts

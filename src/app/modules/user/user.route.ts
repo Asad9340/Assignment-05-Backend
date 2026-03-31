@@ -4,6 +4,7 @@ import { UserController } from './user.controller';
 import { updateUserValidationSchema } from './user.validation';
 import { validateRequest } from '../../middleware/validateRequest';
 import { checkAuth } from '../../middleware/checkAuth';
+import { multerUpload } from '../../config/multer.config';
 
 const router = Router();
 
@@ -20,5 +21,11 @@ router.patch(
   UserController.updateMe,
 );
 router.delete('/me', checkAuth(Role.ADMIN, Role.USER), UserController.deleteMe);
+router.post(
+  '/me/avatar',
+  checkAuth(Role.ADMIN, Role.USER),
+  multerUpload.single('image'),
+  UserController.uploadAvatar,
+);
 
 export const UserRoutes = router;
