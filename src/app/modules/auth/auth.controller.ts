@@ -238,14 +238,22 @@ const googleLoginSuccess = catchAsync(async (req: Request, res: Response) => {
 
   const { accessToken, refreshToken } = result;
 
-  tokenUtils.setAccessTokenCookie(res, accessToken);
-  tokenUtils.setRefreshTokenCookie(res, refreshToken);
-  // ?redirect=//profile -> /profile
+  // Cookies set here would be scoped to the backend domain and invisible to the
+  // frontend (different domain).  Instead, hand off the tokens via a short-lived
+  // redirect to the frontend callback route, which sets them server-side.
   const isValidRedirectPath =
     redirectPath.startsWith('/') && !redirectPath.startsWith('//');
   const finalRedirectPath = isValidRedirectPath ? redirectPath : '/dashboard';
 
-  res.redirect(`${envVars.FRONTEND_URL}${finalRedirectPath}`);
+  const callbackUrl = new URL(
+    `${envVars.FRONTEND_URL}/api/auth/google/callback`,
+  );
+  callbackUrl.searchParams.set('accessToken', accessToken);
+  callbackUrl.searchParams.set('refreshToken', refreshToken);
+  callbackUrl.searchParams.set('sessionToken', sessionToken);
+  callbackUrl.searchParams.set('redirect', finalRedirectPath);
+
+  res.redirect(callbackUrl.toString());
 });
 
 const handleOAuthError = catchAsync((req: Request, res: Response) => {

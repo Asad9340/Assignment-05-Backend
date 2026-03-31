@@ -425,25 +425,22 @@ var auth = betterAuth({
       maxAge: 60 * 60 * 60 * 24
     }
   },
-  redirectURLs: {
-    signIn: `${envVars.BETTER_AUTH_URL}/api/v1/auth/google/success`
-  },
   trustedOrigins: [envVars.BETTER_AUTH_URL, envVars.FRONTEND_URL],
   advanced: {
-    useSecureCookies: false,
+    useSecureCookies: envVars.NODE_ENV === "production",
     cookies: {
       state: {
         attributes: {
-          sameSite: "none",
-          secure: true,
+          sameSite: envVars.NODE_ENV === "production" ? "none" : "lax",
+          secure: envVars.NODE_ENV === "production",
           httpOnly: true,
           path: "/"
         }
       },
       sessionToken: {
         attributes: {
-          sameSite: "none",
-          secure: true,
+          sameSite: envVars.NODE_ENV === "production" ? "none" : "lax",
+          secure: envVars.NODE_ENV === "production",
           httpOnly: true,
           path: "/"
         }
@@ -1086,11 +1083,16 @@ var googleLoginSuccess2 = catchAsync_default(async (req, res) => {
   }
   const result = await authService.googleLoginSuccess(session);
   const { accessToken, refreshToken } = result;
-  tokenUtils.setAccessTokenCookie(res, accessToken);
-  tokenUtils.setRefreshTokenCookie(res, refreshToken);
   const isValidRedirectPath = redirectPath.startsWith("/") && !redirectPath.startsWith("//");
   const finalRedirectPath = isValidRedirectPath ? redirectPath : "/dashboard";
-  res.redirect(`${envVars.FRONTEND_URL}${finalRedirectPath}`);
+  const callbackUrl = new URL(
+    `${envVars.FRONTEND_URL}/api/auth/google/callback`
+  );
+  callbackUrl.searchParams.set("accessToken", accessToken);
+  callbackUrl.searchParams.set("refreshToken", refreshToken);
+  callbackUrl.searchParams.set("sessionToken", sessionToken);
+  callbackUrl.searchParams.set("redirect", finalRedirectPath);
+  res.redirect(callbackUrl.toString());
 });
 var handleOAuthError = catchAsync_default((req, res) => {
   const error = req.query.error || "oauth_failed";
