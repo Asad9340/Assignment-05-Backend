@@ -175,7 +175,7 @@ const updateMe = async (user: IRequestUser, payload: IUpdateUserPayload) => {
     throw new AppError(status.NOT_FOUND, 'User not found');
   }
 
-  if (Object.keys(payload).length === 0) {
+  if (!payload || Object.keys(payload).length === 0) {
     throw new AppError(status.BAD_REQUEST, 'No data provided');
   }
 
