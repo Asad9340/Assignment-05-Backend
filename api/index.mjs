@@ -1404,7 +1404,7 @@ var updateMe = async (user, payload) => {
   if (!existingUser || existingUser.isDeleted || existingUser.status === UserStatus.DELETED) {
     throw new AppError_default(status6.NOT_FOUND, "User not found");
   }
-  if (Object.keys(payload).length === 0) {
+  if (!payload || Object.keys(payload).length === 0) {
     throw new AppError_default(status6.BAD_REQUEST, "No data provided");
   }
   const updatedUser = await prisma.user.update({
@@ -1510,8 +1510,10 @@ var UserController = {
 // src/app/modules/user/user.validation.ts
 import { z } from "zod";
 var updateUserValidationSchema = z.object({
-  name: z.string().min(2).max(100).optional(),
-  image: z.string().url().optional()
+  body: z.object({
+    name: z.string().min(2).max(100).optional(),
+    image: z.string().url().optional()
+  })
 });
 
 // src/app/middleware/validateRequest.ts
@@ -1526,7 +1528,7 @@ var validateRequest = (zodSchema) => {
     if (!parsedResult.success) {
       return next(parsedResult.error);
     }
-    req.body = parsedResult.data.body;
+    req.body = parsedResult.data.body ?? {};
     return next();
   };
 };
