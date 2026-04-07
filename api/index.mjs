@@ -69,6 +69,11 @@ var UserStatus = {
   BLOCKED: "BLOCKED",
   DELETED: "DELETED"
 };
+var InvitationStatus = {
+  PENDING: "PENDING",
+  ACCEPTED: "ACCEPTED",
+  REJECTED: "REJECTED"
+};
 var PaymentGateway = {
   SSLCOMMERZ: "SSLCOMMERZ"
 };
@@ -2040,6 +2045,10 @@ var buildEventDateTime = (eventDate, eventTime) => {
 var getFeeType = (registrationFee) => {
   return registrationFee && registrationFee > 0 ? FeeType.PAID : FeeType.FREE;
 };
+var normalizeText = (value) => value.trim().toLowerCase();
+var getPopularityScore = (participants, reviews) => {
+  return participants * 2 + reviews * 3;
+};
 var createEvent = async (user, payload) => {
   const eventDateTime = buildEventDateTime(
     payload.eventDate,
@@ -2200,6 +2209,247 @@ var getSingleEvent = async (eventId) => {
   }
   return event;
 };
+var getSearchSuggestions = async (query) => {
+  const keyword = typeof query.q === "string" ? normalizeText(query.q).slice(0, 60) : "";
+  const requestedLimit = Number(query.limit || 8);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(3, Math.min(12, requestedLimit)) : 8;
+  const events = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      status: EventStatus.ACTIVE
+    },
+    orderBy: [{ eventDateTime: "asc" }, { createdAt: "desc" }],
+    take: 80,
+    include: {
+      owner: {
+        select: {
+          name: true
+        }
+      },
+      _count: {
+        select: {
+          participants: true,
+          reviews: true
+        }
+      }
+    }
+  });
+  const suggestionsMap = /* @__PURE__ */ new Map();
+  const registerSuggestion = (rawText, type, hint, baseScore) => {
+    if (!rawText) {
+      return;
+    }
+    const text = rawText.trim();
+    if (!text) {
+      return;
+    }
+    const normalized = normalizeText(text);
+    const startsWith = keyword ? normalized.startsWith(keyword) : false;
+    const includes = keyword ? normalized.includes(keyword) : false;
+    const hasWordPrefix = keyword ? normalized.split(/\s+/).some((word) => word.startsWith(keyword)) : false;
+    if (keyword && !startsWith && !includes && !hasWordPrefix) {
+      return;
+    }
+    let relevance = baseScore;
+    if (startsWith) {
+      relevance += 14;
+    }
+    if (hasWordPrefix) {
+      relevance += 9;
+    }
+    if (includes) {
+      relevance += 5;
+    }
+    const existing = suggestionsMap.get(normalized);
+    if (!existing || relevance > existing.score) {
+      suggestionsMap.set(normalized, {
+        text,
+        type,
+        hint,
+        score: relevance
+      });
+    }
+  };
+  for (const event of events) {
+    const popularity = getPopularityScore(
+      event._count.participants,
+      event._count.reviews
+    );
+    registerSuggestion(event.title, "TITLE", "Event title", popularity + 4);
+    registerSuggestion(event.venue, "VENUE", "Event venue", popularity + 2);
+    registerSuggestion(
+      event.owner?.name,
+      "ORGANIZER",
+      "Organizer name",
+      popularity + 1
+    );
+  }
+  const suggestions = Array.from(suggestionsMap.values()).sort((a, b) => b.score - a.score).slice(0, limit);
+  const trending = events.map((event) => ({
+    id: event.id,
+    title: event.title,
+    popularity: getPopularityScore(
+      event._count.participants,
+      event._count.reviews
+    ),
+    visibility: event.visibility,
+    feeType: event.feeType,
+    eventDateTime: event.eventDateTime
+  })).sort((a, b) => {
+    if (b.popularity !== a.popularity) {
+      return b.popularity - a.popularity;
+    }
+    return a.eventDateTime.getTime() - b.eventDateTime.getTime();
+  }).slice(0, 5);
+  return {
+    keyword,
+    suggestions,
+    trending
+  };
+};
+var getPersonalizedRecommendations = async (user, query) => {
+  const requestedLimit = Number(query.limit || 6);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(3, Math.min(12, requestedLimit)) : 6;
+  const [participations, invitations, reviews] = await Promise.all([
+    prisma.eventParticipant.findMany({
+      where: {
+        userId: user.userId,
+        isDeleted: false
+      },
+      include: {
+        event: {
+          select: {
+            id: true,
+            visibility: true,
+            feeType: true
+          }
+        }
+      }
+    }),
+    prisma.eventInvitation.findMany({
+      where: {
+        userId: user.userId,
+        isDeleted: false
+      },
+      include: {
+        event: {
+          select: {
+            id: true,
+            visibility: true,
+            feeType: true
+          }
+        }
+      }
+    }),
+    prisma.eventReview.findMany({
+      where: {
+        userId: user.userId,
+        isDeleted: false
+      },
+      include: {
+        event: {
+          select: {
+            id: true,
+            visibility: true,
+            feeType: true
+          }
+        }
+      }
+    })
+  ]);
+  const visibilityScores = {
+    PUBLIC: 1,
+    PRIVATE: 1
+  };
+  const feeTypeScores = {
+    FREE: 1,
+    PAID: 1
+  };
+  const excludedEventIds = /* @__PURE__ */ new Set();
+  for (const item of participations) {
+    excludedEventIds.add(item.eventId);
+    const signalWeight = item.status === ParticipationStatus.JOINED || item.status === ParticipationStatus.APPROVED ? 3 : item.status === ParticipationStatus.PENDING ? 1 : 0;
+    visibilityScores[item.event.visibility] += signalWeight;
+    feeTypeScores[item.event.feeType] += signalWeight;
+  }
+  for (const item of invitations) {
+    excludedEventIds.add(item.eventId);
+    const signalWeight = item.status === InvitationStatus.ACCEPTED ? 2 : item.status === InvitationStatus.PENDING ? 1 : 0;
+    visibilityScores[item.event.visibility] += signalWeight;
+    feeTypeScores[item.event.feeType] += signalWeight;
+  }
+  for (const item of reviews) {
+    excludedEventIds.add(item.eventId);
+    visibilityScores[item.event.visibility] += 2;
+    feeTypeScores[item.event.feeType] += 2;
+  }
+  const preferredVisibility = visibilityScores.PRIVATE > visibilityScores.PUBLIC ? "PRIVATE" : "PUBLIC";
+  const preferredFeeType = feeTypeScores.PAID > feeTypeScores.FREE ? "PAID" : "FREE";
+  const candidateEvents = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      status: EventStatus.ACTIVE,
+      ownerId: {
+        not: user.userId
+      },
+      eventDateTime: {
+        gt: /* @__PURE__ */ new Date()
+      },
+      ...excludedEventIds.size ? {
+        id: {
+          notIn: Array.from(excludedEventIds)
+        }
+      } : {}
+    },
+    orderBy: [{ eventDateTime: "asc" }, { createdAt: "desc" }],
+    take: 60,
+    include: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true
+        }
+      },
+      _count: {
+        select: {
+          participants: true,
+          reviews: true
+        }
+      }
+    }
+  });
+  const recommendations = candidateEvents.map((event) => {
+    const popularityScore = getPopularityScore(
+      event._count.participants,
+      event._count.reviews
+    );
+    const preferenceScore = visibilityScores[event.visibility] + feeTypeScores[event.feeType];
+    const daysUntilEvent = Math.floor(
+      (event.eventDateTime.getTime() - Date.now()) / (1e3 * 60 * 60 * 24)
+    );
+    const freshnessScore = daysUntilEvent <= 14 ? 3 : daysUntilEvent <= 45 ? 2 : 1;
+    const aiScore = preferenceScore * 3 + popularityScore + freshnessScore;
+    return {
+      ...event,
+      aiScore,
+      aiReason: `Matches your ${event.visibility.toLowerCase()} and ${event.feeType.toLowerCase()} activity pattern.`
+    };
+  }).sort((a, b) => b.aiScore - a.aiScore).slice(0, limit);
+  return {
+    insights: {
+      preferredVisibility,
+      preferredFeeType,
+      signalStrength: {
+        participations: participations.length,
+        invitations: invitations.length,
+        reviews: reviews.length
+      }
+    },
+    recommendations
+  };
+};
 var updateEvent = async (user, eventId, payload) => {
   const existingEvent = await prisma.event.findFirst({
     where: {
@@ -2286,6 +2536,8 @@ var EventService = {
   getAllEvents,
   getMyEvents,
   getUpcomingPublicEvents,
+  getSearchSuggestions,
+  getPersonalizedRecommendations,
   getSingleEvent,
   updateEvent,
   deleteEvent
@@ -2334,6 +2586,29 @@ var getUpcomingPublicEvents2 = catchAsync_default(
     });
   }
 );
+var getSearchSuggestions2 = catchAsync_default(async (req, res) => {
+  const result = await EventService.getSearchSuggestions(req.query);
+  sendResponse(res, {
+    httpStatusCode: status10.OK,
+    success: true,
+    message: "Event search suggestions retrieved successfully",
+    data: result
+  });
+});
+var getPersonalizedRecommendations2 = catchAsync_default(
+  async (req, res) => {
+    const result = await EventService.getPersonalizedRecommendations(
+      req.user,
+      req.query
+    );
+    sendResponse(res, {
+      httpStatusCode: status10.OK,
+      success: true,
+      message: "Personalized recommendations retrieved successfully",
+      data: result
+    });
+  }
+);
 var getSingleEvent2 = catchAsync_default(async (req, res) => {
   const result = await EventService.getSingleEvent(
     req.params.eventId
@@ -2375,6 +2650,8 @@ var EventController = {
   getAllEvents: getAllEvents2,
   getMyEvents: getMyEvents2,
   getUpcomingPublicEvents: getUpcomingPublicEvents2,
+  getSearchSuggestions: getSearchSuggestions2,
+  getPersonalizedRecommendations: getPersonalizedRecommendations2,
   getSingleEvent: getSingleEvent2,
   updateEvent: updateEvent2,
   deleteEvent: deleteEvent2
@@ -2421,6 +2698,12 @@ router3.get(
   EventController.getMyEvents
 );
 router3.get("/upcoming", EventController.getUpcomingPublicEvents);
+router3.get("/search-suggestions", EventController.getSearchSuggestions);
+router3.get(
+  "/recommendations",
+  checkAuth(Role.ADMIN, Role.USER),
+  EventController.getPersonalizedRecommendations
+);
 router3.get("/:eventId", EventController.getSingleEvent);
 router3.post(
   "/",
@@ -2904,7 +3187,7 @@ import status14 from "http-status";
 import status13 from "http-status";
 
 // src/app/modules/invitation/invitation.constant.ts
-var InvitationStatus = {
+var InvitationStatus2 = {
   PENDING: "PENDING",
   ACCEPTED: "ACCEPTED",
   REJECTED: "REJECTED"
@@ -2971,7 +3254,7 @@ var inviteUser = async (user, eventId, payload) => {
       eventId,
       userId: payload.userId,
       invitedById: user.userId,
-      status: InvitationStatus.PENDING
+      status: InvitationStatus2.PENDING
     },
     include: {
       event: true
@@ -3028,7 +3311,7 @@ var acceptInvitation = async (user, invitationId) => {
   if (!invitation) {
     throw new AppError_default(status13.NOT_FOUND, "Invitation not found");
   }
-  if (invitation.status !== InvitationStatus.PENDING) {
+  if (invitation.status !== InvitationStatus2.PENDING) {
     throw new AppError_default(
       status13.BAD_REQUEST,
       "Only pending invitations can be accepted"
@@ -3056,7 +3339,7 @@ var acceptInvitation = async (user, invitationId) => {
         id: invitation.id
       },
       data: {
-        status: InvitationStatus.ACCEPTED
+        status: InvitationStatus2.ACCEPTED
       }
     });
     const participant = await tx.eventParticipant.create({
@@ -3086,7 +3369,7 @@ var rejectInvitation = async (user, invitationId) => {
   if (!invitation) {
     throw new AppError_default(status13.NOT_FOUND, "Invitation not found");
   }
-  if (invitation.status !== InvitationStatus.PENDING) {
+  if (invitation.status !== InvitationStatus2.PENDING) {
     throw new AppError_default(
       status13.BAD_REQUEST,
       "Only pending invitations can be rejected"
@@ -3097,7 +3380,7 @@ var rejectInvitation = async (user, invitationId) => {
       id: invitationId
     },
     data: {
-      status: InvitationStatus.REJECTED
+      status: InvitationStatus2.REJECTED
     }
   });
   return updatedInvitation;
@@ -4290,7 +4573,7 @@ var getSummary = async (user) => {
       where: {
         userId: user.userId,
         isDeleted: false,
-        status: InvitationStatus.PENDING
+        status: InvitationStatus2.PENDING
       }
     }),
     prisma.eventReview.count({
@@ -4343,7 +4626,7 @@ var getPendingInvitations = async (user) => {
     where: {
       userId: user.userId,
       isDeleted: false,
-      status: InvitationStatus.PENDING
+      status: InvitationStatus2.PENDING
     },
     include: {
       event: true
