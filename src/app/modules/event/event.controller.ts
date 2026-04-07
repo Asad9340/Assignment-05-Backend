@@ -56,6 +56,33 @@ const getUpcomingPublicEvents = catchAsync(
   },
 );
 
+const getSearchSuggestions = catchAsync(async (req: Request, res: Response) => {
+  const result = await EventService.getSearchSuggestions(req.query as any);
+
+  sendResponse(res, {
+    httpStatusCode: status.OK,
+    success: true,
+    message: 'Event search suggestions retrieved successfully',
+    data: result,
+  });
+});
+
+const getPersonalizedRecommendations = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await EventService.getPersonalizedRecommendations(
+      req.user as IRequestUser,
+      req.query as any,
+    );
+
+    sendResponse(res, {
+      httpStatusCode: status.OK,
+      success: true,
+      message: 'Personalized recommendations retrieved successfully',
+      data: result,
+    });
+  },
+);
+
 const getSingleEvent = catchAsync(async (req: Request, res: Response) => {
   const result = await EventService.getSingleEvent(
     req.params.eventId as string,
@@ -103,6 +130,8 @@ export const EventController = {
   getAllEvents,
   getMyEvents,
   getUpcomingPublicEvents,
+  getSearchSuggestions,
+  getPersonalizedRecommendations,
   getSingleEvent,
   updateEvent,
   deleteEvent,

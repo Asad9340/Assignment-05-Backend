@@ -17,6 +17,12 @@ router.get(
   EventController.getMyEvents,
 );
 router.get('/upcoming', EventController.getUpcomingPublicEvents);
+router.get('/search-suggestions', EventController.getSearchSuggestions);
+router.get(
+  '/recommendations',
+  checkAuth(Role.ADMIN, Role.USER),
+  EventController.getPersonalizedRecommendations,
+);
 router.get('/:eventId', EventController.getSingleEvent);
 
 router.post(
