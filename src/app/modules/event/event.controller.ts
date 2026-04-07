@@ -57,7 +57,36 @@ const getUpcomingPublicEvents = catchAsync(
 );
 
 const getSearchSuggestions = catchAsync(async (req: Request, res: Response) => {
-  const result = await EventService.getSearchSuggestions(req.query as any);
+  let result: {
+    keyword: string;
+    suggestions: Array<{
+      text: string;
+      type: 'TITLE' | 'VENUE' | 'ORGANIZER';
+      hint: string;
+      score: number;
+    }>;
+    trending: Array<{
+      id: string;
+      title: string;
+      popularity: number;
+      visibility: string;
+      feeType: string;
+      eventDateTime: Date;
+    }>;
+  };
+
+  try {
+    result = await EventService.getSearchSuggestions(req.query as any);
+  } catch {
+    result = {
+      keyword:
+        typeof req.query.q === 'string'
+          ? req.query.q.trim().toLowerCase().slice(0, 60)
+          : '',
+      suggestions: [],
+      trending: [],
+    };
+  }
 
   sendResponse(res, {
     httpStatusCode: status.OK,

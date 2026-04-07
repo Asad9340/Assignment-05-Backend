@@ -14,12 +14,42 @@ import { prismaSchemaReady } from './app/lib/prisma';
 
 const app: Application = express();
 app.set('query parser', (str: string) => qs.parse(str));
+
+const explicitAllowedOrigins = [envVars.FRONTEND_URL, envVars.BETTER_AUTH_URL]
+  .flatMap(value => value.split(','))
+  .map(value => value.trim())
+  .filter(Boolean);
+
+const isAllowedOrigin = (origin?: string) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (explicitAllowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  // Allow Vercel preview and production domains for the frontend project.
+  if (/^https:\/\/.*planora-frontend.*\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+
+  return false;
+};
+
 app.use(
   cors({
-    origin: [envVars.FRONTEND_URL, envVars.BETTER_AUTH_URL],
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin || 'unknown'}`));
+    },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   }),
 );
 app.set('view engine', 'ejs');

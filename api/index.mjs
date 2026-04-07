@@ -2587,7 +2587,16 @@ var getUpcomingPublicEvents2 = catchAsync_default(
   }
 );
 var getSearchSuggestions2 = catchAsync_default(async (req, res) => {
-  const result = await EventService.getSearchSuggestions(req.query);
+  let result;
+  try {
+    result = await EventService.getSearchSuggestions(req.query);
+  } catch {
+    result = {
+      keyword: typeof req.query.q === "string" ? req.query.q.trim().toLowerCase().slice(0, 60) : "",
+      suggestions: [],
+      trending: []
+    };
+  }
   sendResponse(res, {
     httpStatusCode: status10.OK,
     success: true,
@@ -5669,12 +5678,31 @@ import qs from "qs";
 import cors from "cors";
 var app = express();
 app.set("query parser", (str) => qs.parse(str));
+var explicitAllowedOrigins = [envVars.FRONTEND_URL, envVars.BETTER_AUTH_URL].flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+var isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+  if (explicitAllowedOrigins.includes(origin)) {
+    return true;
+  }
+  if (/^https:\/\/.*planora-frontend.*\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+  return false;
+};
 app.use(
   cors({
-    origin: [envVars.FRONTEND_URL, envVars.BETTER_AUTH_URL],
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS blocked for origin: ${origin || "unknown"}`));
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
   })
 );
 app.set("view engine", "ejs");
