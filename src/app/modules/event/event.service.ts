@@ -56,6 +56,7 @@ const createEvent = async (
     data: {
       title: payload.title,
       description: payload.description,
+      image: payload.image,
       eventDateTime,
       venue: payload.venue,
       eventLink: payload.eventLink,
@@ -575,7 +576,11 @@ const updateEvent = async (
     throw new AppError(status.NOT_FOUND, 'Event not found');
   }
 
-  if (existingEvent.ownerId !== user.userId && user.role !== Role.ADMIN) {
+  if (
+    existingEvent.ownerId !== user.userId &&
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to update this event',
@@ -585,6 +590,7 @@ const updateEvent = async (
   const updateData: any = {
     title: payload.title,
     description: payload.description,
+    image: payload.image,
     venue: payload.venue,
     eventLink: payload.eventLink,
     visibility: payload.visibility,
@@ -638,7 +644,11 @@ const deleteEvent = async (user: IRequestUser, eventId: string) => {
     throw new AppError(status.NOT_FOUND, 'Event not found');
   }
 
-  if (existingEvent.ownerId !== user.userId && user.role !== Role.ADMIN) {
+  if (
+    existingEvent.ownerId !== user.userId &&
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to delete this event',

@@ -183,7 +183,7 @@ const getAllUsers = async (query: any) => {
     where.status = statusFilter;
   }
 
-  if (roleFilter && ['ADMIN', 'USER'].includes(roleFilter)) {
+  if (roleFilter && ['SUPER_ADMIN', 'ADMIN', 'USER'].includes(roleFilter)) {
     where.role = roleFilter;
   }
 
@@ -399,14 +399,60 @@ const updateUser = async (
     );
   }
 
+  if (payload.role === Role.SUPER_ADMIN) {
+    throw new AppError(
+      status.BAD_REQUEST,
+      'Setting SUPER_ADMIN role is not allowed from this endpoint',
+    );
+  }
+
+  if (existingUser.role === Role.SUPER_ADMIN) {
+    throw new AppError(
+      status.BAD_REQUEST,
+      'Super admin account cannot be modified from this endpoint',
+    );
+  }
+
+  if (adminUser.role === Role.ADMIN && payload.role !== undefined) {
+    if (existingUser.role !== Role.USER || payload.role !== Role.ADMIN) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        'Admin can only promote user role to admin',
+      );
+    }
+  }
+
   if (
     existingUser.role === Role.ADMIN &&
     (payload.role !== undefined || payload.status !== undefined)
   ) {
-    throw new AppError(
-      status.BAD_REQUEST,
-      'Admin account role or status cannot be changed from this endpoint',
-    );
+    if (adminUser.role !== Role.SUPER_ADMIN) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        'Only super admin can change admin account role or status',
+      );
+    }
+
+    if (payload.role !== undefined && payload.role !== Role.USER) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        'Super admin can only demote admin to user from this endpoint',
+      );
+    }
+
+    if (payload.status !== undefined) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        'Admin account status cannot be changed from this endpoint',
+      );
+    }
+
+    if (payload.role === undefined) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        'Provide role USER to demote this admin account',
+      );
+    }
   }
 
   const updateData: {
@@ -457,10 +503,13 @@ const blockUser = async (userId: string) => {
     throw new AppError(status.NOT_FOUND, 'User not found');
   }
 
-  if (existingUser.role === 'ADMIN') {
+  if (
+    existingUser.role === Role.ADMIN ||
+    existingUser.role === Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.BAD_REQUEST,
-      'Admin accounts cannot be blocked from this endpoint',
+      'Admin or super admin accounts cannot be blocked from this endpoint',
     );
   }
 
@@ -510,10 +559,13 @@ const deleteUser = async (userId: string) => {
     throw new AppError(status.NOT_FOUND, 'User not found');
   }
 
-  if (existingUser.role === 'ADMIN') {
+  if (
+    existingUser.role === Role.ADMIN ||
+    existingUser.role === Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.BAD_REQUEST,
-      'Admin accounts cannot be deleted from this endpoint',
+      'Admin or super admin accounts cannot be deleted from this endpoint',
     );
   }
 

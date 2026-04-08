@@ -174,7 +174,11 @@ const validateTransaction = catchAsync(async (req: Request, res: Response) => {
 
   const result = await PaymentService.validateExistingTransaction(trxId);
 
-  if (user.role !== Role.ADMIN && result.userId !== user.userId) {
+  if (
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN &&
+    result.userId !== user.userId
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to view this transaction',

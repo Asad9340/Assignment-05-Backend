@@ -35,7 +35,11 @@ const searchUsers = async (
       throw new AppError(status.NOT_FOUND, 'Event not found');
     }
 
-    if (event.ownerId !== user.userId && user.role !== Role.ADMIN) {
+    if (
+      event.ownerId !== user.userId &&
+      user.role !== Role.ADMIN &&
+      user.role !== Role.SUPER_ADMIN
+    ) {
       throw new AppError(
         status.FORBIDDEN,
         'You are not allowed to invite users for this event',

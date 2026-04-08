@@ -7,10 +7,12 @@ import { IRequestUser } from '../../interfaces/requestUser.interface';
 import { sendResponse } from '../../shared/sendResponse';
 
 const createEvent = catchAsync(async (req: Request, res: Response) => {
-  const result = await EventService.createEvent(
-    req.user as IRequestUser,
-    req.body,
-  );
+  const imageUrl = req.file?.path;
+
+  const result = await EventService.createEvent(req.user as IRequestUser, {
+    ...req.body,
+    ...(imageUrl ? { image: imageUrl } : {}),
+  });
 
   sendResponse(res, {
     httpStatusCode: status.CREATED,
@@ -126,10 +128,15 @@ const getSingleEvent = catchAsync(async (req: Request, res: Response) => {
 });
 
 const updateEvent = catchAsync(async (req: Request, res: Response) => {
+  const imageUrl = req.file?.path;
+
   const result = await EventService.updateEvent(
     req.user as IRequestUser,
     req.params.eventId as string,
-    req.body,
+    {
+      ...req.body,
+      ...(imageUrl ? { image: imageUrl } : {}),
+    },
   );
 
   sendResponse(res, {

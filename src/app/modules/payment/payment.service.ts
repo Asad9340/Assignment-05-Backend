@@ -510,7 +510,7 @@ const getMyPayments = async (user: IRequestUser, query: IQueryParams = {}) => {
 };
 
 const getAllPayments = async (user: IRequestUser, query: IQueryParams = {}) => {
-  if (user.role !== Role.ADMIN) {
+  if (user.role !== Role.ADMIN && user.role !== Role.SUPER_ADMIN) {
     throw new AppError(
       httpStatus.FORBIDDEN,
       'Only admin can access all payments',

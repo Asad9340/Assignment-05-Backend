@@ -2,6 +2,7 @@ model Event {
   id            String   @id @default(uuid())
   title         String
   description   String
+  image         String?
   eventDateTime DateTime
   venue         String?
   eventLink     String?

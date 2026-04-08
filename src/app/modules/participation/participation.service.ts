@@ -168,7 +168,11 @@ const getEventParticipants = async (
     throw new AppError(status.NOT_FOUND, 'Event not found');
   }
 
-  if (event.ownerId !== user.userId && user.role !== Role.ADMIN) {
+  if (
+    event.ownerId !== user.userId &&
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to view participants',
@@ -271,7 +275,11 @@ const approveParticipant = async (
     );
   }
 
-  if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
+  if (
+    participant.event.ownerId !== user.userId &&
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to approve this participant',
@@ -334,7 +342,11 @@ const rejectParticipant = async (user: IRequestUser, participantId: string) => {
     throw new AppError(status.NOT_FOUND, 'Participant not found');
   }
 
-  if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
+  if (
+    participant.event.ownerId !== user.userId &&
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to reject this participant',
@@ -369,7 +381,11 @@ const banParticipant = async (user: IRequestUser, participantId: string) => {
     throw new AppError(status.NOT_FOUND, 'Participant not found');
   }
 
-  if (participant.event.ownerId !== user.userId && user.role !== Role.ADMIN) {
+  if (
+    participant.event.ownerId !== user.userId &&
+    user.role !== Role.ADMIN &&
+    user.role !== Role.SUPER_ADMIN
+  ) {
     throw new AppError(
       status.FORBIDDEN,
       'You are not allowed to ban this participant',

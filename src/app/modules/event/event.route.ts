@@ -3,6 +3,7 @@ import { Role } from '../../../generated/prisma/enums';
 import { EventController } from './event.controller';
 import { checkAuth } from '../../middleware/checkAuth';
 import { validateRequest } from '../../middleware/validateRequest';
+import { multerUpload } from '../../config/multer.config';
 import {
   createEventValidationSchema,
   updateEventValidationSchema,
@@ -28,6 +29,7 @@ router.get('/:eventId', EventController.getSingleEvent);
 router.post(
   '/',
   checkAuth(Role.ADMIN, Role.USER),
+  multerUpload.single('image'),
   validateRequest(createEventValidationSchema),
   EventController.createEvent,
 );
@@ -35,6 +37,7 @@ router.post(
 router.patch(
   '/:eventId',
   checkAuth(Role.ADMIN, Role.USER),
+  multerUpload.single('image'),
   validateRequest(updateEventValidationSchema),
   EventController.updateEvent,
 );

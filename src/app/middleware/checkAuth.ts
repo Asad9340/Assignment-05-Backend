@@ -8,6 +8,19 @@ import { prisma } from '../lib/prisma';
 import { CookieUtils } from '../utils/cookie';
 import { jwtUtils } from '../utils/jwt';
 
+const hasRoleAccess = (authRoles: Role[], userRole: Role) => {
+  if (authRoles.includes(userRole)) {
+    return true;
+  }
+
+  // SUPER_ADMIN should have ADMIN-level access across protected admin routes.
+  if (userRole === Role.SUPER_ADMIN && authRoles.includes(Role.ADMIN)) {
+    return true;
+  }
+
+  return false;
+};
+
 export const checkAuth =
   (...authRoles: Role[]) =>
   async (req: Request, res: Response, next: NextFunction) => {
@@ -66,7 +79,7 @@ export const checkAuth =
             );
           }
 
-          if (authRoles.length > 0 && !authRoles.includes(user.role)) {
+          if (authRoles.length > 0 && !hasRoleAccess(authRoles, user.role)) {
             throw new AppError(
               status.FORBIDDEN,
               'Forbidden access! You do not have permission to access this resource.',
@@ -148,7 +161,7 @@ export const checkAuth =
         };
       }
 
-      if (authRoles.length > 0 && !authRoles.includes(req.user.role)) {
+      if (authRoles.length > 0 && !hasRoleAccess(authRoles, req.user.role)) {
         throw new AppError(
           status.FORBIDDEN,
           'Forbidden access! You do not have permission to access this resource.',
