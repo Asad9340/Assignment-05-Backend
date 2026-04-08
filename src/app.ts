@@ -15,7 +15,11 @@ import { prismaSchemaReady } from './app/lib/prisma';
 const app: Application = express();
 app.set('query parser', (str: string) => qs.parse(str));
 
-const explicitAllowedOrigins = [envVars.FRONTEND_URL, envVars.BETTER_AUTH_URL]
+const explicitAllowedOrigins = [
+  envVars.FRONTEND_URL,
+  envVars.BETTER_AUTH_URL,
+  'http://localhost:3000',
+]
   .flatMap(value => value.split(','))
   .map(value => value.trim())
   .filter(Boolean);
@@ -31,6 +35,11 @@ const isAllowedOrigin = (origin?: string) => {
 
   // Allow Vercel preview and production domains for the frontend project.
   if (/^https:\/\/.*planora-frontend.*\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+
+  // Allow SSLCommerz hosted payment pages to call back into the API.
+  if (/^https:\/\/(sandbox|securepay)\.sslcommerz\.com$/i.test(origin)) {
     return true;
   }
 

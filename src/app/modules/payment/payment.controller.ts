@@ -13,8 +13,12 @@ import { PaymentService } from './payment.service';
 const buildFrontendRedirectUrl = (
   path: '/payment/success' | '/payment/fail' | '/payment/cancel' | '/dashboard',
   trxId?: string,
+  frontendBaseUrl?: string,
 ) => {
-  const frontendUrl = envVars.FRONTEND_URL.replace(/\/$/, '');
+  const frontendUrl = (frontendBaseUrl || envVars.FRONTEND_URL).replace(
+    /\/$/,
+    '',
+  );
   const url = new URL(path, frontendUrl);
 
   if (trxId) {
@@ -22,6 +26,42 @@ const buildFrontendRedirectUrl = (
   }
 
   return url.toString();
+};
+
+const getSafeFrontendBaseUrl = (requestedUrl?: string) => {
+  const defaultOrigin = (() => {
+    try {
+      return new URL(envVars.FRONTEND_URL).origin;
+    } catch {
+      return envVars.FRONTEND_URL.replace(/\/$/, '');
+    }
+  })();
+
+  if (!requestedUrl) {
+    return defaultOrigin;
+  }
+
+  try {
+    const origin = new URL(requestedUrl).origin;
+    const allowedOrigins = new Set([defaultOrigin, 'http://localhost:3000']);
+
+    return allowedOrigins.has(origin) ? origin : defaultOrigin;
+  } catch {
+    return defaultOrigin;
+  }
+};
+
+const resolveFrontendBaseUrlFromRequest = (req: Request) => {
+  const callbackFrontend = req.query.frontend as string | undefined;
+
+  if (callbackFrontend) {
+    return getSafeFrontendBaseUrl(callbackFrontend);
+  }
+
+  const headerOrigin = req.get('origin') || undefined;
+  const headerReferer = req.get('referer') || undefined;
+
+  return getSafeFrontendBaseUrl(headerOrigin || headerReferer);
 };
 
 const getTrxIdFromCallback = (req: Request) => {
@@ -32,9 +72,12 @@ const getTrxIdFromCallback = (req: Request) => {
 };
 
 const initiatePayment = catchAsync(async (req: Request, res: Response) => {
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
+
   const result = await PaymentService.initiateEventPayment(
     (req.user as IRequestUser).userId,
     req.body,
+    frontendBaseUrl,
   );
 
   sendResponse(res, {
@@ -48,6 +91,7 @@ const initiatePayment = catchAsync(async (req: Request, res: Response) => {
 const paymentSuccess = async (req: Request, res: Response) => {
   const trxId = getTrxIdFromCallback(req);
   const valId = (req.query.val_id || req.body?.val_id) as string | undefined;
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
 
   try {
     if (!trxId) {
@@ -59,14 +103,19 @@ const paymentSuccess = async (req: Request, res: Response) => {
       ...(req.body as Record<string, unknown>),
     });
 
-    return res.redirect(buildFrontendRedirectUrl('/dashboard', trxId));
+    return res.redirect(
+      buildFrontendRedirectUrl('/dashboard', trxId, frontendBaseUrl),
+    );
   } catch {
-    return res.redirect(buildFrontendRedirectUrl('/payment/fail', trxId));
+    return res.redirect(
+      buildFrontendRedirectUrl('/payment/fail', trxId, frontendBaseUrl),
+    );
   }
 };
 
 const paymentFail = async (req: Request, res: Response) => {
   const trxId = getTrxIdFromCallback(req);
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
 
   try {
     if (!trxId) {
@@ -81,11 +130,14 @@ const paymentFail = async (req: Request, res: Response) => {
     // Fall through to frontend redirect.
   }
 
-  return res.redirect(buildFrontendRedirectUrl('/payment/fail', trxId));
+  return res.redirect(
+    buildFrontendRedirectUrl('/payment/fail', trxId, frontendBaseUrl),
+  );
 };
 
 const paymentCancel = async (req: Request, res: Response) => {
   const trxId = getTrxIdFromCallback(req);
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
 
   try {
     if (!trxId) {
@@ -100,7 +152,9 @@ const paymentCancel = async (req: Request, res: Response) => {
     // Fall through to frontend redirect.
   }
 
-  return res.redirect(buildFrontendRedirectUrl('/payment/cancel', trxId));
+  return res.redirect(
+    buildFrontendRedirectUrl('/payment/cancel', trxId, frontendBaseUrl),
+  );
 };
 
 const paymentIPN = catchAsync(async (req: Request, res: Response) => {

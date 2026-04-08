@@ -39,6 +39,24 @@ const getBackendBaseUrl = () => {
   }
 };
 
+const getSafeFrontendBaseUrl = (requestedOrigin?: string) => {
+  const defaultOrigin = (() => {
+    try {
+      return new URL(envVars.FRONTEND_URL).origin;
+    } catch {
+      return envVars.FRONTEND_URL.replace(/\/$/, '');
+    }
+  })();
+
+  if (!requestedOrigin) {
+    return defaultOrigin;
+  }
+
+  const allowedOrigins = new Set([defaultOrigin, 'http://localhost:3000']);
+
+  return allowedOrigins.has(requestedOrigin) ? requestedOrigin : defaultOrigin;
+};
+
 const toJsonValue = (payload: unknown): Prisma.InputJsonValue | undefined => {
   if (payload === undefined) {
     return undefined;
@@ -50,6 +68,7 @@ const toJsonValue = (payload: unknown): Prisma.InputJsonValue | undefined => {
 const initiateEventPayment = async (
   userId: string,
   payload: TInitiatePaymentPayload,
+  requestedFrontendOrigin?: string,
 ) => {
   const user = await prisma.user.findFirst({
     where: {
@@ -129,9 +148,11 @@ const initiateEventPayment = async (
   const trxId = `planora_${Date.now()}_${participant.id.slice(0, 8)}`;
 
   const backendBaseUrl = getBackendBaseUrl();
-  const successUrl = `${backendBaseUrl}/api/v1/payments/success?trxId=${trxId}`;
-  const failUrl = `${backendBaseUrl}/api/v1/payments/fail?trxId=${trxId}`;
-  const cancelUrl = `${backendBaseUrl}/api/v1/payments/cancel?trxId=${trxId}`;
+  const frontendBaseUrl = getSafeFrontendBaseUrl(requestedFrontendOrigin);
+  const encodedFrontend = encodeURIComponent(frontendBaseUrl);
+  const successUrl = `${backendBaseUrl}/api/v1/payments/success?trxId=${trxId}&frontend=${encodedFrontend}`;
+  const failUrl = `${backendBaseUrl}/api/v1/payments/fail?trxId=${trxId}&frontend=${encodedFrontend}`;
+  const cancelUrl = `${backendBaseUrl}/api/v1/payments/cancel?trxId=${trxId}&frontend=${encodedFrontend}`;
   const ipnUrl = `${backendBaseUrl}/api/v1/payments/ipn`;
 
   await prisma.paymentTransaction.create({

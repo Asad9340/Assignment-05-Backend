@@ -3930,13 +3930,27 @@ var getBackendBaseUrl = () => {
     return rawBaseUrl;
   }
 };
+var getSafeFrontendBaseUrl = (requestedOrigin) => {
+  const defaultOrigin = (() => {
+    try {
+      return new URL(envVars.FRONTEND_URL).origin;
+    } catch {
+      return envVars.FRONTEND_URL.replace(/\/$/, "");
+    }
+  })();
+  if (!requestedOrigin) {
+    return defaultOrigin;
+  }
+  const allowedOrigins = /* @__PURE__ */ new Set([defaultOrigin, "http://localhost:3000"]);
+  return allowedOrigins.has(requestedOrigin) ? requestedOrigin : defaultOrigin;
+};
 var toJsonValue = (payload) => {
   if (payload === void 0) {
     return void 0;
   }
   return payload;
 };
-var initiateEventPayment = async (userId, payload) => {
+var initiateEventPayment = async (userId, payload, requestedFrontendOrigin) => {
   const user = await prisma.user.findFirst({
     where: {
       id: userId,
@@ -3999,9 +4013,11 @@ var initiateEventPayment = async (userId, payload) => {
   });
   const trxId = `planora_${Date.now()}_${participant.id.slice(0, 8)}`;
   const backendBaseUrl = getBackendBaseUrl();
-  const successUrl = `${backendBaseUrl}/api/v1/payments/success?trxId=${trxId}`;
-  const failUrl = `${backendBaseUrl}/api/v1/payments/fail?trxId=${trxId}`;
-  const cancelUrl = `${backendBaseUrl}/api/v1/payments/cancel?trxId=${trxId}`;
+  const frontendBaseUrl = getSafeFrontendBaseUrl(requestedFrontendOrigin);
+  const encodedFrontend = encodeURIComponent(frontendBaseUrl);
+  const successUrl = `${backendBaseUrl}/api/v1/payments/success?trxId=${trxId}&frontend=${encodedFrontend}`;
+  const failUrl = `${backendBaseUrl}/api/v1/payments/fail?trxId=${trxId}&frontend=${encodedFrontend}`;
+  const cancelUrl = `${backendBaseUrl}/api/v1/payments/cancel?trxId=${trxId}&frontend=${encodedFrontend}`;
   const ipnUrl = `${backendBaseUrl}/api/v1/payments/ipn`;
   await prisma.paymentTransaction.create({
     data: {
@@ -4350,21 +4366,54 @@ var PaymentService = {
 };
 
 // src/app/modules/payment/payment.controller.ts
-var buildFrontendRedirectUrl = (path4, trxId) => {
-  const frontendUrl = envVars.FRONTEND_URL.replace(/\/$/, "");
+var buildFrontendRedirectUrl = (path4, trxId, frontendBaseUrl) => {
+  const frontendUrl = (frontendBaseUrl || envVars.FRONTEND_URL).replace(
+    /\/$/,
+    ""
+  );
   const url = new URL(path4, frontendUrl);
   if (trxId) {
     url.searchParams.set("trxId", trxId);
   }
   return url.toString();
 };
+var getSafeFrontendBaseUrl2 = (requestedUrl) => {
+  const defaultOrigin = (() => {
+    try {
+      return new URL(envVars.FRONTEND_URL).origin;
+    } catch {
+      return envVars.FRONTEND_URL.replace(/\/$/, "");
+    }
+  })();
+  if (!requestedUrl) {
+    return defaultOrigin;
+  }
+  try {
+    const origin = new URL(requestedUrl).origin;
+    const allowedOrigins = /* @__PURE__ */ new Set([defaultOrigin, "http://localhost:3000"]);
+    return allowedOrigins.has(origin) ? origin : defaultOrigin;
+  } catch {
+    return defaultOrigin;
+  }
+};
+var resolveFrontendBaseUrlFromRequest = (req) => {
+  const callbackFrontend = req.query.frontend;
+  if (callbackFrontend) {
+    return getSafeFrontendBaseUrl2(callbackFrontend);
+  }
+  const headerOrigin = req.get("origin") || void 0;
+  const headerReferer = req.get("referer") || void 0;
+  return getSafeFrontendBaseUrl2(headerOrigin || headerReferer);
+};
 var getTrxIdFromCallback = (req) => {
   return req.query.trxId || req.query.tran_id || req.body?.trxId || req.body?.tran_id;
 };
 var initiatePayment = catchAsync_default(async (req, res) => {
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
   const result = await PaymentService.initiateEventPayment(
     req.user.userId,
-    req.body
+    req.body,
+    frontendBaseUrl
   );
   sendResponse(res, {
     httpStatusCode: status17.CREATED,
@@ -4376,6 +4425,7 @@ var initiatePayment = catchAsync_default(async (req, res) => {
 var paymentSuccess = async (req, res) => {
   const trxId = getTrxIdFromCallback(req);
   const valId = req.query.val_id || req.body?.val_id;
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
   try {
     if (!trxId) {
       throw new AppError_default(status17.BAD_REQUEST, "trxId is required");
@@ -4384,13 +4434,18 @@ var paymentSuccess = async (req, res) => {
       ...req.query,
       ...req.body
     });
-    return res.redirect(buildFrontendRedirectUrl("/dashboard", trxId));
+    return res.redirect(
+      buildFrontendRedirectUrl("/dashboard", trxId, frontendBaseUrl)
+    );
   } catch {
-    return res.redirect(buildFrontendRedirectUrl("/payment/fail", trxId));
+    return res.redirect(
+      buildFrontendRedirectUrl("/payment/fail", trxId, frontendBaseUrl)
+    );
   }
 };
 var paymentFail = async (req, res) => {
   const trxId = getTrxIdFromCallback(req);
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
   try {
     if (!trxId) {
       throw new AppError_default(status17.BAD_REQUEST, "trxId is required");
@@ -4401,10 +4456,13 @@ var paymentFail = async (req, res) => {
     });
   } catch {
   }
-  return res.redirect(buildFrontendRedirectUrl("/payment/fail", trxId));
+  return res.redirect(
+    buildFrontendRedirectUrl("/payment/fail", trxId, frontendBaseUrl)
+  );
 };
 var paymentCancel = async (req, res) => {
   const trxId = getTrxIdFromCallback(req);
+  const frontendBaseUrl = resolveFrontendBaseUrlFromRequest(req);
   try {
     if (!trxId) {
       throw new AppError_default(status17.BAD_REQUEST, "trxId is required");
@@ -4415,7 +4473,9 @@ var paymentCancel = async (req, res) => {
     });
   } catch {
   }
-  return res.redirect(buildFrontendRedirectUrl("/payment/cancel", trxId));
+  return res.redirect(
+    buildFrontendRedirectUrl("/payment/cancel", trxId, frontendBaseUrl)
+  );
 };
 var paymentIPN = catchAsync_default(async (req, res) => {
   await PaymentService.handlePaymentIPN(req.body);
@@ -5678,7 +5738,11 @@ import qs from "qs";
 import cors from "cors";
 var app = express();
 app.set("query parser", (str) => qs.parse(str));
-var explicitAllowedOrigins = [envVars.FRONTEND_URL, envVars.BETTER_AUTH_URL].flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+var explicitAllowedOrigins = [
+  envVars.FRONTEND_URL,
+  envVars.BETTER_AUTH_URL,
+  "http://localhost:3000"
+].flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
 var isAllowedOrigin = (origin) => {
   if (!origin) {
     return true;
@@ -5687,6 +5751,9 @@ var isAllowedOrigin = (origin) => {
     return true;
   }
   if (/^https:\/\/.*planora-frontend.*\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+  if (/^https:\/\/(sandbox|securepay)\.sslcommerz\.com$/i.test(origin)) {
     return true;
   }
   return false;
