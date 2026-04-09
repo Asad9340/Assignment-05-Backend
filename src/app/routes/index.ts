@@ -8,6 +8,7 @@ import { ReviewRoutes } from '../modules/review/review.route';
 import { PaymentRoutes } from '../modules/payment/payment.route';
 import { DashboardRoutes } from '../modules/dashboard/dashboard.route';
 import { AdminRoutes } from '../modules/admin/admin.route';
+import { ChatbotRoutes } from '../modules/chatbot/chatbot.route';
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use('/reviews', ReviewRoutes);
 router.use('/payments', PaymentRoutes);
 router.use('/dashboard', DashboardRoutes);
 router.use('/admin', AdminRoutes);
+router.use('/chatbot', ChatbotRoutes);
 
 export const IndexRoutes = router;

@@ -3,7 +3,7 @@ import express from "express";
 import dotenv2 from "dotenv";
 
 // src/app/routes/index.ts
-import { Router as Router10 } from "express";
+import { Router as Router11 } from "express";
 
 // src/app/modules/auth/auth.route.ts
 import { Router } from "express";
@@ -181,6 +181,11 @@ var loadEnvVariables = () => {
       SSL_STORE_ID: process.env.SSL_STORE_ID?.trim(),
       SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD?.trim(),
       SSL_IS_LIVE: process.env.SSL_IS_LIVE?.trim()
+    },
+    GEMINI: {
+      API_KEY: process.env.GEMINI_API_KEY?.trim() || "",
+      API_URL: process.env.GEMINI_API_URL?.trim() || "https://generativelanguage.googleapis.com/v1beta/models",
+      MODEL: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash"
     }
   };
 };
@@ -5690,36 +5695,269 @@ router9.delete(
 );
 var AdminRoutes = router9;
 
-// src/app/routes/index.ts
+// src/app/modules/chatbot/chatbot.route.ts
+import { Router as Router10 } from "express";
+
+// src/app/modules/chatbot/chatbot.controller.ts
+import status22 from "http-status";
+
+// src/app/modules/chatbot/chatbot.service.ts
+import status21 from "http-status";
+var SYSTEM_PROMPT = "You are Planora Assistant. Help users discover events, suggest activities based on interests, budget, location, and time, and answer general event-planning questions. Keep responses concise, friendly, and practical.";
+var normalizeModelName = (model) => model.trim().replace(/^models\//i, "");
+var modelFallbacks = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash-latest"
+];
+var buildQuotaFallbackReply = (userMessage) => {
+  const prompt = userMessage.trim();
+  return [
+    "I am temporarily running in backup mode because the AI provider quota is exhausted.",
+    "",
+    `For your request: "${prompt || "event suggestions"}"`,
+    "",
+    "Quick event ideas you can try now:",
+    "1) Weekend Community Meetup: low-cost venue, open networking, simple refreshments.",
+    "2) Skills Workshop: 60-90 minute focused session with practical takeaways.",
+    "3) Micro Cultural Night: music, food corner, and audience participation activity.",
+    "",
+    "Planning checklist:",
+    "- Set audience type and budget first.",
+    "- Pick date/time and create a short event description.",
+    "- Share on social + invite targeted groups.",
+    "- Track registrations and send reminder 24h before event."
+  ].join("\n");
+};
+var requestGemini = async (apiKey, modelName, messages) => {
+  const response = await fetch(
+    `${envVars.GEMINI.API_URL}/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: SYSTEM_PROMPT }]
+        },
+        contents: messages.map((message) => ({
+          role: message.role === "assistant" ? "model" : "user",
+          parts: [{ text: message.content }]
+        })),
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 500
+        }
+      })
+    }
+  );
+  const rawBody = await response.text();
+  if (!response.ok) {
+    return {
+      ok: false,
+      statusCode: response.status,
+      modelName,
+      rawBody
+    };
+  }
+  const completion = JSON.parse(rawBody);
+  return {
+    ok: true,
+    modelName,
+    completion
+  };
+};
+var getChatReply = async (payload) => {
+  const apiKey = envVars.GEMINI.API_KEY;
+  if (!apiKey) {
+    throw new AppError_default(
+      status21.INTERNAL_SERVER_ERROR,
+      "Chatbot service is not configured. Missing GEMINI_API_KEY."
+    );
+  }
+  const history = (payload.history || []).slice(-8).map((item) => ({
+    role: item.role,
+    content: item.content.trim()
+  }));
+  const messages = [
+    ...history,
+    { role: "user", content: payload.message.trim() }
+  ];
+  const configuredModel = normalizeModelName(envVars.GEMINI.MODEL);
+  const modelsToTry = [
+    configuredModel,
+    ...modelFallbacks.filter((model) => model !== configuredModel)
+  ];
+  let lastError;
+  let completion = null;
+  for (const modelName of modelsToTry) {
+    const result = await requestGemini(apiKey, modelName, messages);
+    if (result.ok) {
+      completion = result.completion;
+      break;
+    }
+    lastError = {
+      statusCode: result.statusCode,
+      rawBody: result.rawBody,
+      modelName: result.modelName
+    };
+    if (result.statusCode !== status21.NOT_FOUND) {
+      break;
+    }
+  }
+  if (!completion) {
+    const rawError = (lastError?.rawBody || "").toUpperCase();
+    const isQuotaError = lastError?.statusCode === status21.TOO_MANY_REQUESTS || rawError.includes("RESOURCE_EXHAUSTED") || rawError.includes("QUOTA");
+    if (isQuotaError) {
+      return {
+        reply: buildQuotaFallbackReply(payload.message)
+      };
+    }
+    throw new AppError_default(
+      status21.BAD_GATEWAY,
+      `Gemini request failed for model ${lastError?.modelName || configuredModel} with status ${lastError?.statusCode || "unknown"}: ${lastError?.rawBody || "Unknown error"}`
+    );
+  }
+  const reply = completion.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim();
+  if (!reply) {
+    throw new AppError_default(
+      status21.BAD_GATEWAY,
+      "Gemini returned an empty response."
+    );
+  }
+  return {
+    reply
+  };
+};
+var ChatbotService = {
+  getChatReply
+};
+
+// src/app/modules/chatbot/chatbot.controller.ts
+var sendMessage = catchAsync_default(async (req, res) => {
+  const result = await ChatbotService.getChatReply(req.body);
+  sendResponse(res, {
+    httpStatusCode: status22.OK,
+    success: true,
+    message: "Chatbot response generated successfully",
+    data: result
+  });
+});
+var ChatbotController = {
+  sendMessage
+};
+
+// src/app/modules/chatbot/chatbot.validation.ts
+import { z as z7 } from "zod";
+var chatRoleSchema = z7.enum(["user", "assistant"]);
+var chatbotMessageValidationSchema = z7.object({
+  body: z7.object({
+    message: z7.string().trim().min(1).max(1200),
+    history: z7.array(
+      z7.object({
+        role: chatRoleSchema,
+        content: z7.string().trim().min(1).max(1200)
+      })
+    ).max(12).optional()
+  })
+});
+
+// src/app/middleware/chatbotRateLimit.ts
+import status23 from "http-status";
+var REQUEST_LIMIT = 20;
+var WINDOW_MS = 60 * 1e3;
+var rateStore = /* @__PURE__ */ new Map();
+var getClientIdentifier = (req) => {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string") {
+    return forwarded.split(",")[0]?.trim() || "unknown";
+  }
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    return forwarded[0] || "unknown";
+  }
+  return req.ip || "unknown";
+};
+var clearExpiredEntries = (now) => {
+  for (const [key, value] of rateStore.entries()) {
+    if (value.resetAt <= now) {
+      rateStore.delete(key);
+    }
+  }
+};
+var chatbotRateLimit = (req, res, next) => {
+  const now = Date.now();
+  clearExpiredEntries(now);
+  const clientId = getClientIdentifier(req);
+  const currentRecord = rateStore.get(clientId);
+  if (!currentRecord || currentRecord.resetAt <= now) {
+    rateStore.set(clientId, {
+      count: 1,
+      resetAt: now + WINDOW_MS
+    });
+    next();
+    return;
+  }
+  if (currentRecord.count >= REQUEST_LIMIT) {
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((currentRecord.resetAt - now) / 1e3)
+    );
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    next(
+      new AppError_default(
+        status23.TOO_MANY_REQUESTS,
+        "Too many chatbot requests. Please try again shortly."
+      )
+    );
+    return;
+  }
+  currentRecord.count += 1;
+  rateStore.set(clientId, currentRecord);
+  next();
+};
+
+// src/app/modules/chatbot/chatbot.route.ts
 var router10 = Router10();
-router10.use("/auth", AuthRoutes);
-router10.use("/users", UserRoutes);
-router10.use("/events", EventRoutes);
-router10.use("/participations", ParticipationRoutes);
-router10.use("/invitations", InvitationRoutes);
-router10.use("/reviews", ReviewRoutes);
-router10.use("/payments", PaymentRoutes);
-router10.use("/dashboard", DashboardRoutes);
-router10.use("/admin", AdminRoutes);
-var IndexRoutes = router10;
+router10.post(
+  "/message",
+  chatbotRateLimit,
+  validateRequest(chatbotMessageValidationSchema),
+  ChatbotController.sendMessage
+);
+var ChatbotRoutes = router10;
+
+// src/app/routes/index.ts
+var router11 = Router11();
+router11.use("/auth", AuthRoutes);
+router11.use("/users", UserRoutes);
+router11.use("/events", EventRoutes);
+router11.use("/participations", ParticipationRoutes);
+router11.use("/invitations", InvitationRoutes);
+router11.use("/reviews", ReviewRoutes);
+router11.use("/payments", PaymentRoutes);
+router11.use("/dashboard", DashboardRoutes);
+router11.use("/admin", AdminRoutes);
+router11.use("/chatbot", ChatbotRoutes);
+var IndexRoutes = router11;
 
 // src/app/middleware/notFound.ts
-import status21 from "http-status";
+import status24 from "http-status";
 var notFound = (req, res) => {
-  res.status(status21.NOT_FOUND).json({
+  res.status(status24.NOT_FOUND).json({
     success: false,
     message: `Route ${req.originalUrl} Not Found`
   });
 };
 
 // src/app/middleware/globalErrorHandler.ts
-import status23 from "http-status";
-import z7 from "zod";
+import status26 from "http-status";
+import z8 from "zod";
 
 // src/app/errorHelpers/handleZodError.ts
-import status22 from "http-status";
+import status25 from "http-status";
 var handleZodError = (err) => {
-  const statusCode = status22.BAD_REQUEST;
+  const statusCode = status25.BAD_REQUEST;
   const message = "Zod Validation Error";
   const errorSources = [];
   err.issues.forEach((issue) => {
@@ -5749,10 +5987,10 @@ var globalErrorHandler = async (err, req, res, next) => {
     await Promise.all(imageUrls.map((url) => deleteFileFromCloudinary(url)));
   }
   let errorSources = [];
-  let statusCode = status23.INTERNAL_SERVER_ERROR;
+  let statusCode = status26.INTERNAL_SERVER_ERROR;
   let message = "Internal Server Error";
   let stack = void 0;
-  if (err instanceof z7.ZodError) {
+  if (err instanceof z8.ZodError) {
     const simplifiedError = handleZodError(err);
     statusCode = simplifiedError.statusCode;
     message = simplifiedError.message;
@@ -5769,7 +6007,7 @@ var globalErrorHandler = async (err, req, res, next) => {
       }
     ];
   } else if (err instanceof Error) {
-    statusCode = status23.INTERNAL_SERVER_ERROR;
+    statusCode = status26.INTERNAL_SERVER_ERROR;
     message = err.message;
     stack = err.stack;
     errorSources = [

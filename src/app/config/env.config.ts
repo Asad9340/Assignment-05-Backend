@@ -37,6 +37,11 @@ interface EnvConfig {
     SSL_STORE_PASSWORD: string;
     SSL_IS_LIVE: string;
   };
+  GEMINI: {
+    API_KEY: string;
+    API_URL: string;
+    MODEL: string;
+  };
 }
 
 const loadEnvVariables = (): EnvConfig => {
@@ -112,6 +117,13 @@ const loadEnvVariables = (): EnvConfig => {
       SSL_STORE_ID: process.env.SSL_STORE_ID?.trim() as string,
       SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD?.trim() as string,
       SSL_IS_LIVE: process.env.SSL_IS_LIVE?.trim() as string,
+    },
+    GEMINI: {
+      API_KEY: process.env.GEMINI_API_KEY?.trim() || '',
+      API_URL:
+        process.env.GEMINI_API_URL?.trim() ||
+        'https://generativelanguage.googleapis.com/v1beta/models',
+      MODEL: process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash',
     },
   };
 };
