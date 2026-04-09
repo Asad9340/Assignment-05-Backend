@@ -123,7 +123,7 @@ const loadEnvVariables = (): EnvConfig => {
       API_URL:
         process.env.GEMINI_API_URL?.trim() ||
         'https://generativelanguage.googleapis.com/v1beta/models',
-      MODEL: process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash',
+      MODEL: process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash-lite',
     },
   };
 };

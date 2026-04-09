@@ -185,7 +185,7 @@ var loadEnvVariables = () => {
     GEMINI: {
       API_KEY: process.env.GEMINI_API_KEY?.trim() || "",
       API_URL: process.env.GEMINI_API_URL?.trim() || "https://generativelanguage.googleapis.com/v1beta/models",
-      MODEL: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash"
+      MODEL: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash-lite"
     }
   };
 };
@@ -5706,8 +5706,8 @@ import status21 from "http-status";
 var SYSTEM_PROMPT = "You are Planora Assistant. Help users discover events, suggest activities based on interests, budget, location, and time, and answer general event-planning questions. Keep responses concise, friendly, and practical.";
 var normalizeModelName = (model) => model.trim().replace(/^models\//i, "");
 var modelFallbacks = [
-  "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
   "gemini-1.5-flash-latest"
 ];
 var buildQuotaFallbackReply = (userMessage) => {
@@ -5746,8 +5746,8 @@ var requestGemini = async (apiKey, modelName, messages) => {
           parts: [{ text: message.content }]
         })),
         generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 500
+          temperature: 0.4,
+          maxOutputTokens: 220
         }
       })
     }
@@ -5802,7 +5802,7 @@ var getChatReply = async (payload) => {
       rawBody: result.rawBody,
       modelName: result.modelName
     };
-    if (result.statusCode !== status21.NOT_FOUND) {
+    if (result.statusCode !== status21.NOT_FOUND && result.statusCode !== status21.TOO_MANY_REQUESTS) {
       break;
     }
   }

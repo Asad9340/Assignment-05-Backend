@@ -34,8 +34,8 @@ const normalizeModelName = (model: string) =>
   model.trim().replace(/^models\//i, '');
 
 const modelFallbacks = [
-  'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
+  'gemini-2.0-flash',
   'gemini-1.5-flash-latest',
 ];
 
@@ -81,8 +81,8 @@ const requestGemini = async (
           parts: [{ text: message.content }],
         })),
         generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 500,
+          temperature: 0.4,
+          maxOutputTokens: 220,
         },
       }),
     },
@@ -158,7 +158,11 @@ const getChatReply = async (payload: TChatRequestPayload) => {
       modelName: result.modelName,
     };
 
-    if (result.statusCode !== status.NOT_FOUND) {
+    // Continue trying model fallbacks for model-not-found and quota/rate-limit errors.
+    if (
+      result.statusCode !== status.NOT_FOUND &&
+      result.statusCode !== status.TOO_MANY_REQUESTS
+    ) {
       break;
     }
   }
