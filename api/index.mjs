@@ -5704,7 +5704,138 @@ import status22 from "http-status";
 
 // src/app/modules/chatbot/chatbot.service.ts
 import status21 from "http-status";
-var SYSTEM_PROMPT = "You are Planora Assistant. Help users discover events, suggest activities based on interests, budget, location, and time, and answer general event-planning questions. Keep responses concise, friendly, and practical.";
+var SYSTEM_PROMPT = "You are Planora Assistant. You must answer using only provided Planora event database context. Never invent events, prices, dates, links, or venues. If requested data is unavailable in the provided context, say that clearly and ask the user to refine search criteria.";
+var buildSearchTerms = (message) => {
+  const normalized = message.trim().toLowerCase();
+  const parts = normalized.split(/[^a-z0-9]+/).map((part) => part.trim()).filter((part) => part.length >= 3);
+  return Array.from(/* @__PURE__ */ new Set([normalized, ...parts])).slice(0, 8);
+};
+var fetchTopMatchingEvents = async (message) => {
+  const searchTerms = buildSearchTerms(message);
+  const now = /* @__PURE__ */ new Date();
+  const searchFilters = searchTerms.flatMap((term) => [
+    { title: { contains: term, mode: "insensitive" } },
+    { description: { contains: term, mode: "insensitive" } },
+    { venue: { contains: term, mode: "insensitive" } },
+    { owner: { name: { contains: term, mode: "insensitive" } } }
+  ]);
+  const matchingEvents = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      status: EventStatus.ACTIVE,
+      visibility: EventVisibility.PUBLIC,
+      eventDateTime: {
+        gte: now
+      },
+      ...searchFilters.length > 0 ? { OR: searchFilters } : {}
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      eventDateTime: true,
+      venue: true,
+      eventLink: true,
+      feeType: true,
+      registrationFee: true,
+      visibility: true,
+      owner: {
+        select: {
+          name: true
+        }
+      }
+    },
+    orderBy: [{ eventDateTime: "asc" }, { createdAt: "desc" }],
+    take: 6
+  });
+  if (matchingEvents.length > 0) {
+    return matchingEvents.map((event) => ({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      eventDateTime: event.eventDateTime,
+      venue: event.venue,
+      eventLink: event.eventLink,
+      feeType: event.feeType,
+      registrationFee: event.registrationFee,
+      visibility: event.visibility,
+      ownerName: event.owner.name
+    }));
+  }
+  const upcomingEvents = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      status: EventStatus.ACTIVE,
+      visibility: EventVisibility.PUBLIC,
+      eventDateTime: {
+        gte: now
+      }
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      eventDateTime: true,
+      venue: true,
+      eventLink: true,
+      feeType: true,
+      registrationFee: true,
+      visibility: true,
+      owner: {
+        select: {
+          name: true
+        }
+      }
+    },
+    orderBy: [{ eventDateTime: "asc" }, { createdAt: "desc" }],
+    take: 6
+  });
+  return upcomingEvents.map((event) => ({
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    eventDateTime: event.eventDateTime,
+    venue: event.venue,
+    eventLink: event.eventLink,
+    feeType: event.feeType,
+    registrationFee: event.registrationFee,
+    visibility: event.visibility,
+    ownerName: event.owner.name
+  }));
+};
+var buildEventContext = (events) => {
+  if (events.length === 0) {
+    return [
+      "EVENT_DATA:",
+      "No matching active public events are currently available in Planora database.",
+      "",
+      "RULES:",
+      "- Say that no events are available right now.",
+      "- Ask user to try another keyword or check later.",
+      "- Do not invent any event."
+    ].join("\n");
+  }
+  const eventLines = events.map((event) => {
+    const feeLabel = event.feeType === "PAID" ? `${event.registrationFee}` : "Free";
+    return `- ID: ${event.id}
+  Title: ${event.title}
+  DateTime: ${event.eventDateTime.toISOString()}
+  Venue: ${event.venue || "N/A"}
+  Fee: ${feeLabel}
+  Organizer: ${event.ownerName}
+  Link: ${event.eventLink || "N/A"}
+  Summary: ${event.description.slice(0, 220)}`;
+  });
+  return [
+    "EVENT_DATA:",
+    ...eventLines,
+    "",
+    "RULES:",
+    "- Answer using only EVENT_DATA above.",
+    "- If user asks details not present, say not available in current Planora data.",
+    "- Prefer recommending from listed IDs and include date, venue, and link when available."
+  ].join("\n");
+};
 var buildQuotaFallbackReply = (userMessage) => {
   const prompt = userMessage.trim();
   return [
@@ -5738,7 +5869,7 @@ var normalizeOpenRouterContent = (content) => {
     return "";
   }).join("");
 };
-var requestOpenRouter = async (apiKey, modelName, messages) => {
+var requestOpenRouter = async (apiKey, modelName, messages, eventContext) => {
   const response = await fetch(envVars.OPENROUTER.API_URL, {
     method: "POST",
     headers: {
@@ -5752,7 +5883,9 @@ var requestOpenRouter = async (apiKey, modelName, messages) => {
       messages: [
         {
           role: "system",
-          content: SYSTEM_PROMPT
+          content: `${SYSTEM_PROMPT}
+
+${eventContext}`
         },
         ...messages.map((message) => ({
           role: message.role,
@@ -5806,6 +5939,8 @@ var getChatReply = async (payload) => {
     ...history,
     { role: "user", content: payload.message.trim() }
   ];
+  const eventMatches = await fetchTopMatchingEvents(payload.message);
+  const eventContext = buildEventContext(eventMatches);
   let lastError;
   const openRouterModels = [
     envVars.OPENROUTER.MODEL,
@@ -5815,7 +5950,8 @@ var getChatReply = async (payload) => {
     const result = await requestOpenRouter(
       openRouterApiKey,
       modelName,
-      messages
+      messages,
+      eventContext
     );
     if (result.ok) {
       return {

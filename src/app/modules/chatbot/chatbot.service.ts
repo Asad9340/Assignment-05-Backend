@@ -1,6 +1,8 @@
 import status from 'http-status';
 import AppError from '../../errorHelpers/AppError';
 import { envVars } from '../../config/env.config';
+import { prisma } from '../../lib/prisma';
+import { EventStatus, EventVisibility } from '../../../generated/prisma/enums';
 
 type TChatRole = 'user' | 'assistant';
 
@@ -26,7 +28,160 @@ type TOpenRouterResponse = {
 };
 
 const SYSTEM_PROMPT =
-  'You are Planora Assistant. Help users discover events, suggest activities based on interests, budget, location, and time, and answer general event-planning questions. Keep responses concise, friendly, and practical.';
+  'You are Planora Assistant. You must answer using only provided Planora event database context. Never invent events, prices, dates, links, or venues. If requested data is unavailable in the provided context, say that clearly and ask the user to refine search criteria.';
+
+type TEventContextItem = {
+  id: string;
+  title: string;
+  description: string;
+  eventDateTime: Date;
+  venue: string | null;
+  eventLink: string | null;
+  feeType: string;
+  registrationFee: number;
+  visibility: string;
+  ownerName: string;
+};
+
+const buildSearchTerms = (message: string) => {
+  const normalized = message.trim().toLowerCase();
+  const parts = normalized
+    .split(/[^a-z0-9]+/)
+    .map(part => part.trim())
+    .filter(part => part.length >= 3);
+
+  return Array.from(new Set([normalized, ...parts])).slice(0, 8);
+};
+
+const fetchTopMatchingEvents = async (message: string) => {
+  const searchTerms = buildSearchTerms(message);
+  const now = new Date();
+
+  const searchFilters = searchTerms.flatMap(term => [
+    { title: { contains: term, mode: 'insensitive' as const } },
+    { description: { contains: term, mode: 'insensitive' as const } },
+    { venue: { contains: term, mode: 'insensitive' as const } },
+    { owner: { name: { contains: term, mode: 'insensitive' as const } } },
+  ]);
+
+  const matchingEvents = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      status: EventStatus.ACTIVE,
+      visibility: EventVisibility.PUBLIC,
+      eventDateTime: {
+        gte: now,
+      },
+      ...(searchFilters.length > 0 ? { OR: searchFilters } : {}),
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      eventDateTime: true,
+      venue: true,
+      eventLink: true,
+      feeType: true,
+      registrationFee: true,
+      visibility: true,
+      owner: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ eventDateTime: 'asc' }, { createdAt: 'desc' }],
+    take: 6,
+  });
+
+  if (matchingEvents.length > 0) {
+    return matchingEvents.map(event => ({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      eventDateTime: event.eventDateTime,
+      venue: event.venue,
+      eventLink: event.eventLink,
+      feeType: event.feeType,
+      registrationFee: event.registrationFee,
+      visibility: event.visibility,
+      ownerName: event.owner.name,
+    }));
+  }
+
+  const upcomingEvents = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      status: EventStatus.ACTIVE,
+      visibility: EventVisibility.PUBLIC,
+      eventDateTime: {
+        gte: now,
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      eventDateTime: true,
+      venue: true,
+      eventLink: true,
+      feeType: true,
+      registrationFee: true,
+      visibility: true,
+      owner: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ eventDateTime: 'asc' }, { createdAt: 'desc' }],
+    take: 6,
+  });
+
+  return upcomingEvents.map(event => ({
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    eventDateTime: event.eventDateTime,
+    venue: event.venue,
+    eventLink: event.eventLink,
+    feeType: event.feeType,
+    registrationFee: event.registrationFee,
+    visibility: event.visibility,
+    ownerName: event.owner.name,
+  }));
+};
+
+const buildEventContext = (events: TEventContextItem[]) => {
+  if (events.length === 0) {
+    return [
+      'EVENT_DATA:',
+      'No matching active public events are currently available in Planora database.',
+      '',
+      'RULES:',
+      '- Say that no events are available right now.',
+      '- Ask user to try another keyword or check later.',
+      '- Do not invent any event.',
+    ].join('\n');
+  }
+
+  const eventLines = events.map(event => {
+    const feeLabel =
+      event.feeType === 'PAID' ? `${event.registrationFee}` : 'Free';
+
+    return `- ID: ${event.id}\n  Title: ${event.title}\n  DateTime: ${event.eventDateTime.toISOString()}\n  Venue: ${event.venue || 'N/A'}\n  Fee: ${feeLabel}\n  Organizer: ${event.ownerName}\n  Link: ${event.eventLink || 'N/A'}\n  Summary: ${event.description.slice(0, 220)}`;
+  });
+
+  return [
+    'EVENT_DATA:',
+    ...eventLines,
+    '',
+    'RULES:',
+    '- Answer using only EVENT_DATA above.',
+    '- If user asks details not present, say not available in current Planora data.',
+    '- Prefer recommending from listed IDs and include date, venue, and link when available.',
+  ].join('\n');
+};
 
 const buildQuotaFallbackReply = (userMessage: string) => {
   const prompt = userMessage.trim();
@@ -79,6 +234,7 @@ const requestOpenRouter = async (
   apiKey: string,
   modelName: string,
   messages: TChatMessage[],
+  eventContext: string,
 ) => {
   const response = await fetch(envVars.OPENROUTER.API_URL, {
     method: 'POST',
@@ -93,7 +249,7 @@ const requestOpenRouter = async (
       messages: [
         {
           role: 'system',
-          content: SYSTEM_PROMPT,
+          content: `${SYSTEM_PROMPT}\n\n${eventContext}`,
         },
         ...messages.map(message => ({
           role: message.role,
@@ -156,6 +312,8 @@ const getChatReply = async (payload: TChatRequestPayload) => {
     ...history,
     { role: 'user', content: payload.message.trim() },
   ];
+  const eventMatches = await fetchTopMatchingEvents(payload.message);
+  const eventContext = buildEventContext(eventMatches);
 
   let lastError:
     | {
@@ -174,6 +332,7 @@ const getChatReply = async (payload: TChatRequestPayload) => {
       openRouterApiKey,
       modelName,
       messages,
+      eventContext,
     );
 
     if (result.ok) {
