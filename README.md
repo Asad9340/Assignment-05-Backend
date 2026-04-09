@@ -129,10 +129,11 @@ SSL_STORE_ID=...
 SSL_STORE_PASSWORD=...
 SSL_IS_LIVE=false
 
-# Gemini Chatbot
-GEMINI_API_KEY=...
-GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/models
-GEMINI_MODEL=gemini-1.5-flash
+# OpenRouter Chatbot
+OPENROUTER_API_KEY=...
+OPENROUTER_API_URL=https://openrouter.ai/api/v1/chat/completions
+OPENROUTER_MODEL=google/gemini-2.0-flash-lite-001
+OPENROUTER_FALLBACK_MODEL=meta-llama/llama-3.1-8b-instruct:free
 ```
 
 ### 3. Prisma setup

@@ -37,10 +37,11 @@ interface EnvConfig {
     SSL_STORE_PASSWORD: string;
     SSL_IS_LIVE: string;
   };
-  GEMINI: {
+  OPENROUTER: {
     API_KEY: string;
     API_URL: string;
     MODEL: string;
+    FALLBACK_MODEL: string;
   };
 }
 
@@ -118,12 +119,17 @@ const loadEnvVariables = (): EnvConfig => {
       SSL_STORE_PASSWORD: process.env.SSL_STORE_PASSWORD?.trim() as string,
       SSL_IS_LIVE: process.env.SSL_IS_LIVE?.trim() as string,
     },
-    GEMINI: {
-      API_KEY: process.env.GEMINI_API_KEY?.trim() || '',
+    OPENROUTER: {
+      API_KEY: process.env.OPENROUTER_API_KEY?.trim() || '',
       API_URL:
-        process.env.GEMINI_API_URL?.trim() ||
-        'https://generativelanguage.googleapis.com/v1beta/models',
-      MODEL: process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash-lite',
+        process.env.OPENROUTER_API_URL?.trim() ||
+        'https://openrouter.ai/api/v1/chat/completions',
+      MODEL:
+        process.env.OPENROUTER_MODEL?.trim() ||
+        'google/gemini-2.0-flash-lite-001',
+      FALLBACK_MODEL:
+        process.env.OPENROUTER_FALLBACK_MODEL?.trim() ||
+        'meta-llama/llama-3.1-8b-instruct:free',
     },
   };
 };

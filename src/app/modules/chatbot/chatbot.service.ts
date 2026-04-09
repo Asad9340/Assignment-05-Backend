@@ -17,27 +17,16 @@ type TChatRequestPayload = {
   }>;
 };
 
-type TGeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string;
-      }>;
+type TOpenRouterResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string;
     };
   }>;
 };
 
 const SYSTEM_PROMPT =
   'You are Planora Assistant. Help users discover events, suggest activities based on interests, budget, location, and time, and answer general event-planning questions. Keep responses concise, friendly, and practical.';
-
-const normalizeModelName = (model: string) =>
-  model.trim().replace(/^models\//i, '');
-
-const modelFallbacks = [
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash-latest',
-];
 
 const buildQuotaFallbackReply = (userMessage: string) => {
   const prompt = userMessage.trim();
@@ -60,33 +49,61 @@ const buildQuotaFallbackReply = (userMessage: string) => {
   ].join('\n');
 };
 
-const requestGemini = async (
+const normalizeOpenRouterContent = (content: unknown): string => {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return '';
+  }
+
+  return content
+    .map(item => {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'type' in item &&
+        'text' in item &&
+        (item as { type?: unknown }).type === 'text'
+      ) {
+        return String((item as { text?: unknown }).text || '');
+      }
+
+      return '';
+    })
+    .join('');
+};
+
+const requestOpenRouter = async (
   apiKey: string,
   modelName: string,
   messages: TChatMessage[],
 ) => {
-  const response = await fetch(
-    `${envVars.GEMINI.API_URL}/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: SYSTEM_PROMPT }],
-        },
-        contents: messages.map(message => ({
-          role: message.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: message.content }],
-        })),
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 220,
-        },
-      }),
+  const response = await fetch(envVars.OPENROUTER.API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': envVars.FRONTEND_URL,
+      'X-Title': 'Planora Chatbot',
     },
-  );
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT,
+        },
+        ...messages.map(message => ({
+          role: message.role,
+          content: message.content,
+        })),
+      ],
+      temperature: 0.4,
+      max_tokens: 220,
+    }),
+  });
 
   const rawBody = await response.text();
 
@@ -99,22 +116,34 @@ const requestGemini = async (
     };
   }
 
-  const completion = JSON.parse(rawBody) as TGeminiResponse;
+  const completion = JSON.parse(rawBody) as TOpenRouterResponse;
+  const reply = normalizeOpenRouterContent(
+    completion.choices?.[0]?.message?.content,
+  ).trim();
+
+  if (!reply) {
+    return {
+      ok: false as const,
+      statusCode: status.BAD_GATEWAY,
+      modelName,
+      rawBody: 'OpenRouter returned empty response.',
+    };
+  }
 
   return {
     ok: true as const,
     modelName,
-    completion,
+    reply,
   };
 };
 
 const getChatReply = async (payload: TChatRequestPayload) => {
-  const apiKey = envVars.GEMINI.API_KEY;
+  const openRouterApiKey = envVars.OPENROUTER.API_KEY;
 
-  if (!apiKey) {
+  if (!openRouterApiKey) {
     throw new AppError(
       status.INTERNAL_SERVER_ERROR,
-      'Chatbot service is not configured. Missing GEMINI_API_KEY.',
+      'Chatbot service is not configured. Missing OPENROUTER_API_KEY.',
     );
   }
 
@@ -128,12 +157,6 @@ const getChatReply = async (payload: TChatRequestPayload) => {
     { role: 'user', content: payload.message.trim() },
   ];
 
-  const configuredModel = normalizeModelName(envVars.GEMINI.MODEL);
-  const modelsToTry = [
-    configuredModel,
-    ...modelFallbacks.filter(model => model !== configuredModel),
-  ];
-
   let lastError:
     | {
         statusCode: number;
@@ -141,15 +164,22 @@ const getChatReply = async (payload: TChatRequestPayload) => {
         modelName: string;
       }
     | undefined;
+  const openRouterModels = [
+    envVars.OPENROUTER.MODEL,
+    envVars.OPENROUTER.FALLBACK_MODEL,
+  ].filter(Boolean);
 
-  let completion: TGeminiResponse | null = null;
-
-  for (const modelName of modelsToTry) {
-    const result = await requestGemini(apiKey, modelName, messages);
+  for (const modelName of openRouterModels) {
+    const result = await requestOpenRouter(
+      openRouterApiKey,
+      modelName,
+      messages,
+    );
 
     if (result.ok) {
-      completion = result.completion;
-      break;
+      return {
+        reply: result.reply,
+      };
     }
 
     lastError = {
@@ -157,50 +187,24 @@ const getChatReply = async (payload: TChatRequestPayload) => {
       rawBody: result.rawBody,
       modelName: result.modelName,
     };
-
-    // Continue trying model fallbacks for model-not-found and quota/rate-limit errors.
-    if (
-      result.statusCode !== status.NOT_FOUND &&
-      result.statusCode !== status.TOO_MANY_REQUESTS
-    ) {
-      break;
-    }
   }
 
-  if (!completion) {
-    const rawError = (lastError?.rawBody || '').toUpperCase();
-    const isQuotaError =
-      lastError?.statusCode === status.TOO_MANY_REQUESTS ||
-      rawError.includes('RESOURCE_EXHAUSTED') ||
-      rawError.includes('QUOTA');
+  const rawError = (lastError?.rawBody || '').toUpperCase();
+  const isQuotaError =
+    lastError?.statusCode === status.TOO_MANY_REQUESTS ||
+    rawError.includes('RESOURCE_EXHAUSTED') ||
+    rawError.includes('QUOTA');
 
-    if (isQuotaError) {
-      return {
-        reply: buildQuotaFallbackReply(payload.message),
-      };
-    }
-
-    throw new AppError(
-      status.BAD_GATEWAY,
-      `Gemini request failed for model ${lastError?.modelName || configuredModel} with status ${lastError?.statusCode || 'unknown'}: ${lastError?.rawBody || 'Unknown error'}`,
-    );
+  if (isQuotaError) {
+    return {
+      reply: buildQuotaFallbackReply(payload.message),
+    };
   }
 
-  const reply = completion.candidates?.[0]?.content?.parts
-    ?.map(part => part.text || '')
-    .join('')
-    .trim();
-
-  if (!reply) {
-    throw new AppError(
-      status.BAD_GATEWAY,
-      'Gemini returned an empty response.',
-    );
-  }
-
-  return {
-    reply,
-  };
+  throw new AppError(
+    status.BAD_GATEWAY,
+    `OpenRouter request failed for model ${lastError?.modelName || envVars.OPENROUTER.MODEL} with status ${lastError?.statusCode || 'unknown'}: ${lastError?.rawBody || 'Unknown error'}`,
+  );
 };
 
 export const ChatbotService = {
